@@ -168,7 +168,8 @@ def setup_styles(root: tk.Tk, theme: str = "light") -> None:
     
     # Frame
     style.configure("TFrame", background=colors["bg_medium"])
-    style.configure("Card.TFrame", background=colors["bg_light"], relief="raised", borderwidth=1)
+    style.configure("Card.TFrame", background=colors["bg_light"], relief="flat", borderwidth=0)
+
     
     # LabelFrame
     style.configure("TLabelframe", background=colors["bg_medium"], bordercolor=colors["border"])

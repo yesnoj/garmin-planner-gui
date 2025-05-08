@@ -318,7 +318,7 @@ class CalendarFrame(ttk.Frame):
             item: Item da visualizzare
         """
         # Frame per l'item
-        item_frame = ttk.Frame(parent, style="Card.TFrame")
+        item_frame = ttk.Frame(parent)
         item_frame.pack(fill=tk.X, pady=1)
         
         # Colore in base al tipo di sport
@@ -329,8 +329,8 @@ class CalendarFrame(ttk.Frame):
         
         # Titolo dell'item
         title = item.title
-        if len(title) > 20:
-            title = title[:18] + "..."
+        if len(title) > 40:  # Aumenta da 20 a 40 o altro valore
+            title = title[:38] + "..."  # Aumenta da 18 a 38
         
         # Label con l'icona e il titolo
         item_label = ttk.Label(item_frame, text=f"{sport_icon} {title}", 
