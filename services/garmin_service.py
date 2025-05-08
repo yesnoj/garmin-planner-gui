@@ -141,7 +141,24 @@ class GarminService:
             return None
         
         # Crea il mese
-        return CalendarMonth.from_garmin_data(year, month, data)
+        month_obj = CalendarMonth.from_garmin_data(year, month, data)
+        
+        # Aggiungi le attività
+        # Calcola il primo e l'ultimo giorno del mese
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        start_date = f"{year}-{month:02d}-01"
+        end_date = f"{year}-{month:02d}-{last_day:02d}"
+        
+        # Ottieni le attività per questo mese
+        activities = self.client.get_activities(start_date, end_date)
+        
+        # Aggiungi le attività al mese
+        for activity in activities:
+            calendar_item = CalendarItem.from_garmin_activity(activity)
+            month_obj.add_item(calendar_item)
+        
+        return month_obj
     
     def get_activities(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """
