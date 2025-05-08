@@ -10,9 +10,9 @@ import datetime
 import calendar
 from typing import Dict, Any, List, Tuple, Optional
 
-from garmin_planner_gui.auth import GarminClient
-from garmin_planner_gui.models.workout import Workout, WorkoutStep, Target
-from garmin_planner_gui.models.calendar import Calendar, CalendarMonth, CalendarDay, CalendarItem
+from auth import GarminClient
+from models.workout import Workout, WorkoutStep, Target
+from models.calendar import Calendar, CalendarMonth, CalendarDay, CalendarItem
 
 
 class GarminService:

@@ -10,7 +10,7 @@ import re
 import yaml
 from typing import Dict, Any, List, Tuple, Optional
 
-from garmin_planner_gui.models.workout import Workout, WorkoutStep, Target, create_workout_from_yaml
+from models.workout import Workout, WorkoutStep, Target, create_workout_from_yaml
 
 
 class YamlService:

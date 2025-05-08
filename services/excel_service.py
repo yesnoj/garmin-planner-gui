@@ -15,7 +15,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
-from garmin_planner_gui.models.workout import Workout, WorkoutStep, Target
+from models.workout import Workout, WorkoutStep, Target
 
 
 class ExcelService:
