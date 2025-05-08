@@ -107,7 +107,7 @@ class GarminAuth:
                     garth.resume(self.oauth_folder)
                     
                     # Verifica che la sessione sia valida
-                    response = garth.connectapi("/userprofile-service/userprofile")
+                    response = garth.connectapi("/userprofile-service/socialProfile")
                     if not response:
                         raise Exception("Invalid session")
                     
@@ -425,7 +425,7 @@ class GarminClient:
             Profilo utente
         """
         try:
-            response = garth.connectapi('/userprofile-service/userprofile')
+            response = garth.connectapi('/userprofile-service/socialProfile')
             return response
         except Exception as e:
             logging.error(f"Error getting user profile: {str(e)}")

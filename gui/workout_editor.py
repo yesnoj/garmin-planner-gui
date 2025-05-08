@@ -20,7 +20,7 @@ from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     create_scrollable_frame
 )
-from gui.styles import get_icon_for_sport, get_icon_for_step
+from gui.styles import get_icon_for_sport, get_icon_for_step, get_color_for_step
 
 
 class WorkoutEditorFrame(ttk.Frame):

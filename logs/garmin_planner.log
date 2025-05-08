@@ -31,3 +31,28 @@
 2025-05-08 15:07:53,733 - root - ERROR - Errore nel caricamento dell'allenamento: name 'get_color_for_step' is not defined
 2025-05-08 15:09:15,114 - root - INFO - Configuration saved to config.yaml
 2025-05-08 15:09:15,269 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 15:10:34,827 - root - INFO - Logging setup completed.
+2025-05-08 15:10:34,827 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 15:10:36,207 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 15:10:36,426 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 15:10:54,502 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 15:10:54,995 - root - ERROR - Error getting user profile: Error in request: 404 Client Error: Not Found for url: https://connectapi.garmin.com/userprofile-service/userprofile
+2025-05-08 15:11:27,718 - root - ERROR - Errore nel caricamento dell'allenamento: name 'get_color_for_step' is not defined
+2025-05-08 15:15:01,751 - root - INFO - Configuration saved to config.yaml
+2025-05-08 15:15:01,860 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 15:15:05,782 - root - INFO - Logging setup completed.
+2025-05-08 15:15:05,783 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 15:15:07,213 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 15:15:07,419 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 15:15:15,963 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 15:15:22,227 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 15:15:27,876 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 15:15:28,164 - root - ERROR - Error getting user profile: Error in request: 404 Client Error: Not Found for url: https://connectapi.garmin.com/userprofile-service/userprofile
+2025-05-08 15:20:38,695 - root - INFO - Configuration saved to config.yaml
+2025-05-08 15:20:38,811 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 15:21:09,660 - root - INFO - Logging setup completed.
+2025-05-08 15:21:09,660 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 15:21:11,067 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 15:21:11,263 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 15:21:25,026 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 15:21:25,345 - root - INFO - Configuration saved to config.yaml
