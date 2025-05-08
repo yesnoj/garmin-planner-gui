@@ -7,6 +7,7 @@ Dialog per la creazione e modifica di uno step di allenamento.
 
 import logging
 import tkinter as tk
+import re
 from tkinter import ttk
 from typing import Dict, Any, Optional, Callable
 
@@ -184,17 +185,16 @@ class WorkoutStepDialog(tk.Toplevel):
         # Frame per il valore della condizione di fine
         self.end_value_frame = ttk.Frame(end_condition_frame)
         self.end_value_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
-        ttk.Label(self.end_value_frame, text="Valore:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        
-        self.end_value_entry = ttk.Entry(self.end_value_frame, 
-                                      textvariable=self.end_condition_value_var, 
-                                      width=15)
-        self.end_value_entry.grid(row=0, column=1, sticky=tk.W)
-        
-        self.end_value_label = ttk.Label(self.end_value_frame, text="")
-        self.end_value_label.grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
-        
+
+        input_frame = ttk.Frame(self.end_value_frame)
+        input_frame.pack(fill=tk.X)
+
+        ttk.Label(input_frame, text="Valore:").pack(side=tk.LEFT, padx=(0, 5))
+        self.end_value_entry = ttk.Entry(input_frame, textvariable=self.end_condition_value_var, width=15)
+        self.end_value_entry.pack(side=tk.LEFT)
+        self.end_value_label = ttk.Label(input_frame, text="")
+        self.end_value_label.pack(side=tk.LEFT, padx=(5, 0)) 
+
         # Frame per il target
         target_frame = ttk.LabelFrame(main_frame, text="Target")
         target_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
@@ -207,7 +207,7 @@ class WorkoutStepDialog(tk.Toplevel):
         ]
         
         # Se il tipo di sport è ciclismo, aggiungi la zona di potenza
-        if sport_type == "cycling":
+        if self.sport_type == "cycling":
             target_types.append(("Zona di potenza", "power.zone"))
         
         # Crea i radiobutton per i tipi di target
@@ -282,9 +282,9 @@ class WorkoutStepDialog(tk.Toplevel):
         
         # Mostra/nascondi il frame del valore
         if end_condition == "lap.button":
-            self.end_value_frame.grid_remove()
+            self.end_value_entry.config(state="disabled")
         else:
-            self.end_value_frame.grid()
+            self.end_value_entry.config(state="normal")
             
             # Aggiorna l'etichetta
             if end_condition == "time":
