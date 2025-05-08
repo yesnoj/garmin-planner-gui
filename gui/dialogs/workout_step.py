@@ -16,7 +16,7 @@ from models.workout import WorkoutStep, Target
 from models.zone import PaceZone, HeartRateZone, PowerZone
 from gui.utils import (
     create_tooltip, show_error, validate_pace,
-    validate_power, validate_hr, pace_to_seconds
+    validate_power, validate_hr, pace_to_seconds, seconds_to_pace
 )
 
 
@@ -120,6 +120,7 @@ class WorkoutStepDialog(tk.Toplevel):
         # Carica le zone predefinite
         self.load_predefined_zones()
     
+
     def create_widgets(self):
         """Crea i widget del dialog."""
         # Frame principale con padding
@@ -320,92 +321,139 @@ class WorkoutStepDialog(tk.Toplevel):
                 self.on_predefined_zone_selected()
                 
     def on_predefined_zone_selected(self, event=None):
-        """Gestisce la selezione di una zona predefinita."""
+        """Handles selection of a predefined zone."""
         zone_name = self.predefined_zone_var.get()
         
         if not zone_name:
             return
-            
+                
         target_type = self.target_type_var.get()
         
-        # Ottieni i valori della zona selezionata
+        # Get the values of the selected zone
         if target_type == "pace.zone":
-            # Ottieni la zona di passo
+            # Get the pace zone
             pace_range = self.config.get(f'sports.{self.sport_type}.paces.{zone_name}', '')
             
             if '-' in pace_range:
-                # Formato mm:ss-mm:ss
+                # Format mm:ss-mm:ss
                 min_pace, max_pace = pace_range.split('-')
-                self.target_min_var.set(min_pace)
-                self.target_max_var.set(max_pace)
             else:
-                # Formato mm:ss
-                self.target_min_var.set(pace_range)
-                self.target_max_var.set(pace_range)
+                # Single value format mm:ss - APPLY MARGINS
+                min_pace = max_pace = pace_range
                 
+                # Apply margins for single value
+                faster_margin = self.config.get(f'sports.{self.sport_type}.margins.faster', '0:05')
+                slower_margin = self.config.get(f'sports.{self.sport_type}.margins.slower', '0:05')
+                
+                # Calculate new min and max with margins
+                min_pace_secs = pace_to_seconds(min_pace)
+                faster_secs = pace_to_seconds(faster_margin)
+                slower_secs = pace_to_seconds(slower_margin)
+                
+                min_pace_with_margin = min_pace_secs - faster_secs  # Faster = lower time value
+                max_pace_with_margin = min_pace_secs + slower_secs  # Slower = higher time value
+                
+                # Convert back to mm:ss format
+                min_pace = seconds_to_pace(min_pace_with_margin)
+                max_pace = seconds_to_pace(max_pace_with_margin)
+            
+            self.target_min_var.set(min_pace)
+            self.target_max_var.set(max_pace)
+                    
         elif target_type == "heart.rate.zone":
-            # Ottieni la zona di frequenza cardiaca
+            # Get the heart rate zone
             hr_range = self.config.get(f'heart_rates.{zone_name}', '')
             
-            # Estrai i valori numerici (può essere in formato NN-NN% max_hr)
+            # Extract numeric values (can be in format NN-NN% max_hr)
             if '-' in hr_range:
-                # Formato N-N o N-N% max_hr
+                # Format N-N or N-N% max_hr
                 if 'max_hr' in hr_range:
-                    # Formato N-N% max_hr
+                    # Format N-N% max_hr
                     parts = hr_range.split('-')
                     min_hr = parts[0].strip()
                     max_hr = parts[1].split('%')[0].strip()
                     
-                    # Converti in valori assoluti usando max_hr
+                    # Convert to absolute values using max_hr
                     max_hr_value = self.config.get('heart_rates.max_hr', 180)
                     min_hr_value = int(float(min_hr) * max_hr_value / 100)
                     max_hr_value = int(float(max_hr) * max_hr_value / 100)
-                    
-                    self.target_min_var.set(str(min_hr_value))
-                    self.target_max_var.set(str(max_hr_value))
                 else:
-                    # Formato N-N
+                    # Format N-N
                     min_hr, max_hr = hr_range.split('-')
-                    self.target_min_var.set(min_hr)
-                    self.target_max_var.set(max_hr)
+                    min_hr_value = int(min_hr)
+                    max_hr_value = int(max_hr)
             else:
-                # Formato N o N% max_hr
+                # Single value format N or N% max_hr - APPLY MARGINS
                 if 'max_hr' in hr_range:
-                    # Formato N% max_hr
+                    # Format N% max_hr
                     hr = hr_range.split('%')[0].strip()
                     max_hr_value = self.config.get('heart_rates.max_hr', 180)
                     hr_value = int(float(hr) * max_hr_value / 100)
-                    self.target_min_var.set(str(hr_value))
-                    self.target_max_var.set(str(hr_value))
                 else:
-                    # Formato N
-                    self.target_min_var.set(hr_range)
-                    self.target_max_var.set(hr_range)
+                    # Format N
+                    hr_value = int(hr_range)
                 
+                # Apply margins for single value
+                hr_up_margin = self.config.get('hr_margins.hr_up', 5)
+                hr_down_margin = self.config.get('hr_margins.hr_down', 5)
+                    
+                min_hr_value = hr_value - hr_down_margin
+                max_hr_value = hr_value + hr_up_margin
+            
+            self.target_min_var.set(str(min_hr_value))
+            self.target_max_var.set(str(max_hr_value))
+                    
         elif target_type == "power.zone" and self.sport_type == "cycling":
-            # Ottieni la zona di potenza
+            # Get the power zone
             power_range = self.config.get(f'sports.cycling.power_values.{zone_name}', '')
             
             if '-' in power_range:
-                # Formato N-N
+                # Format N-N
                 min_power, max_power = power_range.split('-')
-                self.target_min_var.set(min_power)
-                self.target_max_var.set(max_power)
+                min_power_value = int(min_power)
+                max_power_value = int(max_power)
             elif power_range.startswith('<'):
-                # Formato <N
+                # Format <N
                 power = power_range[1:]
-                self.target_min_var.set('0')
-                self.target_max_var.set(power)
+                min_power_value = 0
+                max_power_value = int(power)
             elif power_range.endswith('+'):
-                # Formato N+
+                # Format N+
                 power = power_range[:-1]
-                self.target_min_var.set(power)
-                self.target_max_var.set('999')
+                min_power_value = int(power)
+                max_power_value = 999
             else:
-                # Formato N
-                self.target_min_var.set(power_range)
-                self.target_max_var.set(power_range)
+                # Single value format N - APPLY MARGINS
+                power_value = int(power_range)
+                
+                # Apply margins for single value
+                power_up_margin = self.config.get('sports.cycling.margins.power_up', 10)
+                power_down_margin = self.config.get('sports.cycling.margins.power_down', 10)
+                
+                min_power_value = power_value - power_down_margin
+                max_power_value = power_value + power_up_margin
+            
+            self.target_min_var.set(str(min_power_value))
+            self.target_max_var.set(str(max_power_value))
     
+    def pace_to_seconds(pace):
+        """Convert a pace string (mm:ss format) to seconds."""
+        parts = pace.split(':')
+        if len(parts) != 2:
+            return 0
+        try:
+            minutes = int(parts[0])
+            seconds = int(parts[1])
+            return minutes * 60 + seconds
+        except ValueError:
+            return 0
+
+    def seconds_to_pace(seconds):
+        """Convert seconds to a pace string (mm:ss format)."""
+        minutes = int(seconds) // 60
+        remaining_seconds = int(seconds) % 60
+        return f"{minutes}:{remaining_seconds:02d}"
+
     def on_step_type_change(self):
         """Gestisce il cambio di tipo di step."""
         step_type = self.step_type_var.get()

@@ -3,18 +3,18 @@ oauth_folder: ~/.garth
 sports:
   running:
     paces:
-      Z1: 6:30-6:00
-      Z2: 6:00-5:30
-      Z3: 5:30-5:00
-      Z4: 5:00-4:30
-      Z5: 4:30-4:00
+      Z1: '6:35'
+      Z2: '6:20'
+      Z3: '6:00'
+      Z4: '5:20'
+      Z5: '4:50'
       recovery: 7:00-6:30
       threshold: 5:10-4:50
       marathon: 5:20-5:10
-      race_pace: 5:10-4:50
+      race_pace: '4:50'
     margins:
-      faster: 0:05
-      slower: 0:05
+      faster: 0:02
+      slower: 0:02
   cycling:
     power_values:
       ftp: '250'

@@ -112,3 +112,78 @@
 2025-05-08 16:31:11,556 - root - INFO - Configuration loaded from config.yaml
 2025-05-08 16:31:11,774 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
 2025-05-08 16:31:21,265 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 16:32:40,214 - root - INFO - Configuration saved to config.yaml
+2025-05-08 16:32:40,403 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 16:32:43,367 - root - INFO - Logging setup completed.
+2025-05-08 16:32:43,367 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 16:32:44,809 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 16:32:45,023 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 16:33:01,524 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:05:44,917 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:05:45,019 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:05:47,605 - root - INFO - Logging setup completed.
+2025-05-08 17:05:47,605 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:05:49,073 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:12:24,124 - root - INFO - Logging setup completed.
+2025-05-08 17:12:24,124 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:12:25,545 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:12:25,729 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:12:38,464 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:16:07,746 - root - ERROR - Errore nel salvataggio delle zone: 'ZonesManagerFrame' object has no attribute 'hr_entries'
+2025-05-08 17:16:27,837 - root - ERROR - Errore nel salvataggio delle zone: 'ZonesManagerFrame' object has no attribute 'hr_entries'
+2025-05-08 17:17:47,738 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:17:47,851 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:17:51,176 - root - INFO - Logging setup completed.
+2025-05-08 17:17:51,177 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:17:52,628 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:17:52,834 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:18:04,313 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:18:23,888 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:24:15,720 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:24:15,849 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:29:57,630 - root - INFO - Logging setup completed.
+2025-05-08 17:29:57,630 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:29:59,077 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:29:59,269 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:30:34,829 - root - ERROR - Login failed: HTTPSConnectionPool(host='sso.garmin.com', port=443): Read timed out. (read timeout=10)
+2025-05-08 17:31:10,736 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:32:58,151 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:32:58,265 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:34:19,928 - root - INFO - Logging setup completed.
+2025-05-08 17:34:19,928 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:34:21,315 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:34:21,503 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:34:33,818 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:35:23,980 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:35:24,096 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:39:25,574 - root - INFO - Logging setup completed.
+2025-05-08 17:39:25,574 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:39:26,979 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:39:27,181 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:39:35,250 - urllib3.connectionpool - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)'))': /sso/embed?id=gauth-widget&embedWidget=true&gauthHost=https%3A%2F%2Fsso.garmin.com%2Fsso
+2025-05-08 17:39:36,293 - urllib3.connectionpool - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)'))': /sso/embed?id=gauth-widget&embedWidget=true&gauthHost=https%3A%2F%2Fsso.garmin.com%2Fsso
+2025-05-08 17:39:39,474 - urllib3.connectionpool - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)'))': /sso/embed?id=gauth-widget&embedWidget=true&gauthHost=https%3A%2F%2Fsso.garmin.com%2Fsso
+2025-05-08 17:39:39,524 - root - ERROR - Login failed: HTTPSConnectionPool(host='sso.garmin.com', port=443): Max retries exceeded with url: /sso/embed?id=gauth-widget&embedWidget=true&gauthHost=https%3A%2F%2Fsso.garmin.com%2Fsso (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)')))
+2025-05-08 17:49:26,355 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:50:24,897 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:50:24,999 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:52:47,474 - root - INFO - Logging setup completed.
+2025-05-08 17:52:47,474 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:52:48,963 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:52:49,159 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:53:00,552 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:56:40,211 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:56:40,321 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:56:45,054 - root - INFO - Logging setup completed.
+2025-05-08 17:56:45,054 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:56:46,439 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:56:46,629 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:56:56,809 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:57:23,099 - root - INFO - Configuration saved to config.yaml
+2025-05-08 17:57:23,211 - root - INFO - GarminPlannerGUI terminated.
+2025-05-08 17:58:08,493 - root - INFO - Logging setup completed.
+2025-05-08 17:58:08,493 - root - INFO - Starting GarminPlannerGUI...
+2025-05-08 17:58:09,884 - root - INFO - Configuration loaded from config.yaml
+2025-05-08 17:58:10,081 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-08 17:58:24,864 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-08 17:59:50,592 - root - INFO - Configuration saved to config.yaml
