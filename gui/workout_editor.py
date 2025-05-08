@@ -18,9 +18,9 @@ from auth import GarminClient
 from models.workout import Workout, WorkoutStep, Target
 from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
-    create_scrollable_frame, get_icon_for_sport, get_icon_for_step
+    create_scrollable_frame
 )
-from gui.styles import get_color_for_sport, get_color_for_step
+from gui.styles import get_icon_for_sport, get_icon_for_step
 
 
 class WorkoutEditorFrame(ttk.Frame):
@@ -583,28 +583,28 @@ class WorkoutEditorFrame(ttk.Frame):
         header_frame.bind("<Double-1>", lambda e: self.edit_step())
         details_frame.bind("<Double-1>", lambda e: self.edit_step())
 
-        def add_step(self):
-            """Aggiunge un nuovo step all'allenamento corrente."""
-            # Verifica che ci sia un allenamento corrente
-            if not self.current_workout:
-                return
-            
-            # Importa qui per evitare import circolari
-            from gui.dialogs.workout_step import WorkoutStepDialog
-            
-            # Callback per l'aggiunta dello step
-            def on_step_added(step):
-                # Aggiungi lo step all'allenamento
-                self.current_workout.add_step(step)
-                
-                # Segna come modificato
-                self.current_workout_modified = True
-                
-                # Aggiorna la lista degli step
-                self.update_steps_list()
-            
-            # Crea il dialog
-            dialog = WorkoutStepDialog(self, callback=on_step_added, sport_type=self.sport_var.get())
+    def add_step(self):
+        """Aggiunge un nuovo step all'allenamento corrente."""
+        # Verifica che ci sia un allenamento corrente
+        if not self.current_workout:
+         return
+        
+        # Importa qui per evitare import circolari
+        from gui.dialogs.workout_step import WorkoutStepDialog
+        
+        # Callback per l'aggiunta dello step
+        def on_step_added(step):
+         # Aggiungi lo step all'allenamento
+         self.current_workout.add_step(step)
+         
+         # Segna come modificato
+         self.current_workout_modified = True
+         
+         # Aggiorna la lista degli step
+         self.update_steps_list()
+        
+        # Crea il dialog
+        dialog = WorkoutStepDialog(self, callback=on_step_added, sport_type=self.sport_var.get())
     
     def add_repeat(self):
         """Aggiunge un nuovo gruppo di ripetizioni all'allenamento corrente."""

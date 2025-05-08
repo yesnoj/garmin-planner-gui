@@ -20,8 +20,9 @@ from services.excel_service import ExcelService
 from services.garmin_service import GarminService
 from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
-    create_scrollable_frame, get_icon_for_sport
+    create_scrollable_frame
 )
+from gui.styles import get_icon_for_sport
 
 
 class ImportExportFrame(ttk.Frame):
