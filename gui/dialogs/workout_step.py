@@ -10,9 +10,9 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Dict, Any, Optional, Callable
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.models.workout import WorkoutStep, Target
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from models.workout import WorkoutStep, Target
+from gui.utils import (
     create_tooltip, show_error, validate_pace,
     validate_power, validate_hr
 )

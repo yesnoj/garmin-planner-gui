@@ -53,7 +53,7 @@ def main():
     logging.info("Starting GarminPlannerGUI...")
     
     # Importa il modulo app solo dopo la configurazione del logging
-    from garmin_planner_gui.gui.app import GarminPlannerApp
+    from gui.app import GarminPlannerApp
     
     # Crea l'applicazione Tkinter
     root = Tk()

@@ -12,8 +12,8 @@ from tkinter import ttk, messagebox
 import threading
 from typing import Optional, Dict, Any
 
-from garmin_planner_gui.auth import GarminAuth, GarminClient
-from garmin_planner_gui.gui.utils import create_tooltip, show_error
+from auth import GarminAuth, GarminClient
+from gui.utils import create_tooltip, show_error
 
 
 class LoginFrame(ttk.Frame):
@@ -259,7 +259,7 @@ if __name__ == "__main__":
     notebook.pack(fill=tk.BOTH, expand=True)
     
     # Crea il frame di login
-    from garmin_planner_gui.auth import get_auth
+    from auth import get_auth
     auth = get_auth()
     
     login_frame = LoginFrame(notebook, auth)

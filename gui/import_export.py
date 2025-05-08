@@ -12,13 +12,13 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 from typing import Dict, Any, List, Tuple, Optional, Callable
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.auth import GarminClient
-from garmin_planner_gui.models.workout import Workout
-from garmin_planner_gui.services.yaml_service import YamlService
-from garmin_planner_gui.services.excel_service import ExcelService
-from garmin_planner_gui.services.garmin_service import GarminService
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from auth import GarminClient
+from models.workout import Workout
+from services.yaml_service import YamlService
+from services.excel_service import ExcelService
+from services.garmin_service import GarminService
+from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     create_scrollable_frame, get_icon_for_sport
 )

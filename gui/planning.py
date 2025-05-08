@@ -14,15 +14,15 @@ import datetime
 import re
 from typing import Dict, Any, List, Tuple, Optional, Callable
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.models.workout import Workout
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from models.workout import Workout
+from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     format_workout_name, parse_workout_name, get_weeks_from_workouts,
     get_sessions_per_week, extract_sport_from_steps, date_to_weekday
 )
-from garmin_planner_gui.gui.styles import get_color_for_sport, get_icon_for_sport
-from garmin_planner_gui.gui.dialogs.date_picker import DatePickerDialog
+from gui.styles import get_color_for_sport, get_icon_for_sport
+from gui.dialogs.date_picker import DatePickerDialog
 
 
 class ScheduleDialog(tk.Toplevel):

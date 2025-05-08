@@ -13,14 +13,14 @@ import json
 import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.auth import GarminClient
-from garmin_planner_gui.models.workout import Workout, WorkoutStep, Target
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from auth import GarminClient
+from models.workout import Workout, WorkoutStep, Target
+from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     create_scrollable_frame, get_icon_for_sport, get_icon_for_step
 )
-from garmin_planner_gui.gui.styles import get_color_for_sport, get_color_for_step
+from gui.styles import get_color_for_sport, get_color_for_step
 
 
 class WorkoutEditorFrame(ttk.Frame):
@@ -361,7 +361,7 @@ class WorkoutEditorFrame(ttk.Frame):
                 raise ValueError(f"Allenamento non trovato: {workout_id}")
             
             # Importa l'allenamento
-            from garmin_planner_gui.services.garmin_service import GarminService
+            from services.garmin_service import GarminService
             service = GarminService(self.garmin_client)
             
             workout = service.import_workout(workout_data)
@@ -584,27 +584,27 @@ class WorkoutEditorFrame(ttk.Frame):
         details_frame.bind("<Double-1>", lambda e: self.edit_step())
 
         def add_step(self):
-        """Aggiunge un nuovo step all'allenamento corrente."""
-        # Verifica che ci sia un allenamento corrente
-        if not self.current_workout:
-            return
-        
-        # Importa qui per evitare import circolari
-        from garmin_planner_gui.gui.dialogs.workout_step import WorkoutStepDialog
-        
-        # Callback per l'aggiunta dello step
-        def on_step_added(step):
-            # Aggiungi lo step all'allenamento
-            self.current_workout.add_step(step)
+            """Aggiunge un nuovo step all'allenamento corrente."""
+            # Verifica che ci sia un allenamento corrente
+            if not self.current_workout:
+                return
             
-            # Segna come modificato
-            self.current_workout_modified = True
+            # Importa qui per evitare import circolari
+            from gui.dialogs.workout_step import WorkoutStepDialog
             
-            # Aggiorna la lista degli step
-            self.update_steps_list()
-        
-        # Crea il dialog
-        dialog = WorkoutStepDialog(self, callback=on_step_added, sport_type=self.sport_var.get())
+            # Callback per l'aggiunta dello step
+            def on_step_added(step):
+                # Aggiungi lo step all'allenamento
+                self.current_workout.add_step(step)
+                
+                # Segna come modificato
+                self.current_workout_modified = True
+                
+                # Aggiorna la lista degli step
+                self.update_steps_list()
+            
+            # Crea il dialog
+            dialog = WorkoutStepDialog(self, callback=on_step_added, sport_type=self.sport_var.get())
     
     def add_repeat(self):
         """Aggiunge un nuovo gruppo di ripetizioni all'allenamento corrente."""
@@ -613,7 +613,7 @@ class WorkoutEditorFrame(ttk.Frame):
             return
         
         # Importa qui per evitare import circolari
-        from garmin_planner_gui.gui.dialogs.repeat_step import RepeatStepDialog
+        from gui.dialogs.repeat_step import RepeatStepDialog
         
         # Callback per l'aggiunta del gruppo
         def on_repeat_added(repeat_step):
@@ -641,7 +641,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Verifica il tipo di step
         if step.step_type == "repeat":
             # Importa qui per evitare import circolari
-            from garmin_planner_gui.gui.dialogs.repeat_step import RepeatStepDialog
+            from gui.dialogs.repeat_step import RepeatStepDialog
             
             # Callback per l'aggiornamento dello step
             def on_repeat_updated(repeat_step):
@@ -659,7 +659,7 @@ class WorkoutEditorFrame(ttk.Frame):
                                      sport_type=self.sport_var.get())
         else:
             # Importa qui per evitare import circolari
-            from garmin_planner_gui.gui.dialogs.workout_step import WorkoutStepDialog
+            from gui.dialogs.workout_step import WorkoutStepDialog
             
             # Callback per l'aggiornamento dello step
             def on_step_updated(updated_step):
@@ -855,7 +855,7 @@ class WorkoutEditorFrame(ttk.Frame):
                 workout_data = self.garmin_client.get_workout(self.current_workout_id)
                 
                 # Importa l'allenamento
-                from garmin_planner_gui.services.garmin_service import GarminService
+                from services.garmin_service import GarminService
                 service = GarminService(self.garmin_client)
                 
                 workout = service.import_workout(workout_data)
@@ -961,7 +961,7 @@ class WorkoutEditorFrame(ttk.Frame):
             # Per ogni allenamento
             for workout_data in workouts_data:
                 # Importa l'allenamento
-                from garmin_planner_gui.services.garmin_service import GarminService
+                from services.garmin_service import GarminService
                 service = GarminService(self.garmin_client)
                 
                 workout = service.import_workout(workout_data)
@@ -970,7 +970,7 @@ class WorkoutEditorFrame(ttk.Frame):
                     workouts.append((workout.workout_name, workout))
             
             # Crea il dialog
-            from garmin_planner_gui.gui.planning import ScheduleDialog
+            from gui.planning import ScheduleDialog
             
             dialog = ScheduleDialog(self, workouts)
             self.wait_window(dialog)

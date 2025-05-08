@@ -12,16 +12,16 @@ from tkinter import ttk, messagebox
 import re
 from typing import Dict, Any, List, Tuple, Optional, Union
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.models.zone import (
+from config import get_config
+from models.zone import (
     Zone, PaceZone, HeartRateZone, PowerZone, ZoneSet
 )
-from garmin_planner_gui.gui.utils import (
+from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     create_scrollable_frame, validate_pace, validate_power, validate_hr,
     parse_pace_range, parse_power_range
 )
-from garmin_planner_gui.gui.styles import get_color_for_sport, get_icon_for_sport
+from gui.styles import get_color_for_sport, get_icon_for_sport
 
 
 class ZonesManagerFrame(ttk.Frame):

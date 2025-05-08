@@ -17,7 +17,7 @@ try:
 except ImportError:
     TKCALENDAR_AVAILABLE = False
 
-from garmin_planner_gui.gui.utils import (
+from gui.utils import (
     is_valid_date, show_error
 )
 

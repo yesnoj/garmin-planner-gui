@@ -11,15 +11,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Dict, Any
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.auth import get_auth, GarminClient
-from garmin_planner_gui.gui.styles import setup_styles
-from garmin_planner_gui.gui.login_frame import LoginFrame
-from garmin_planner_gui.gui.workout_editor import WorkoutEditorFrame
-from garmin_planner_gui.gui.calendar_view import CalendarFrame
-from garmin_planner_gui.gui.zones_manager import ZonesManagerFrame
-from garmin_planner_gui.gui.import_export import ImportExportFrame
-from garmin_planner_gui.gui.utils import center_window
+from config import get_config
+from auth import get_auth, GarminClient
+from gui.styles import setup_styles
+from gui.login_frame import LoginFrame
+from gui.workout_editor import WorkoutEditorFrame
+from gui.calendar_view import CalendarFrame
+from gui.zones_manager import ZonesManagerFrame
+from gui.import_export import ImportExportFrame
+from gui.utils import center_window
 
 
 class GarminPlannerApp:

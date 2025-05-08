@@ -10,12 +10,12 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Dict, Any, List, Optional, Callable
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.models.workout import WorkoutStep
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from models.workout import WorkoutStep
+from gui.utils import (
     create_tooltip, show_error, show_warning, ask_yes_no
 )
-from garmin_planner_gui.gui.styles import get_icon_for_step
+from gui.styles import get_icon_for_step
 
 
 class RepeatStepDialog(tk.Toplevel):
@@ -263,7 +263,7 @@ class RepeatStepDialog(tk.Toplevel):
     def add_step(self):
         """Aggiunge un nuovo step."""
         # Importa qui per evitare import circolari
-        from garmin_planner_gui.gui.dialogs.workout_step import WorkoutStepDialog
+        from gui.dialogs.workout_step import WorkoutStepDialog
         
         # Crea un nuovo step
         def on_step_added(step):
@@ -280,7 +280,7 @@ class RepeatStepDialog(tk.Toplevel):
             return
         
         # Importa qui per evitare import circolari
-        from garmin_planner_gui.gui.dialogs.workout_step import WorkoutStepDialog
+        from gui.dialogs.workout_step import WorkoutStepDialog
         
         # Ottieni lo step
         step = self.steps[self.selected_step_index]

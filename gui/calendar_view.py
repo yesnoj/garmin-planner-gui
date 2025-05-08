@@ -13,16 +13,16 @@ import calendar
 import datetime
 from typing import Dict, Any, List, Tuple, Optional, Union, Callable
 
-from garmin_planner_gui.config import get_config
-from garmin_planner_gui.auth import GarminClient
-from garmin_planner_gui.models.calendar import Calendar, CalendarMonth, CalendarDay, CalendarItem
-from garmin_planner_gui.services.garmin_service import GarminService
-from garmin_planner_gui.gui.utils import (
+from config import get_config
+from auth import GarminClient
+from models.calendar import Calendar, CalendarMonth, CalendarDay, CalendarItem
+from services.garmin_service import GarminService
+from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no, 
     is_valid_date, date_to_weekday, create_scrollable_frame
 )
-from garmin_planner_gui.gui.styles import get_color_for_sport, get_icon_for_sport
-from garmin_planner_gui.gui.dialogs.date_picker import DatePickerDialog
+from gui.styles import get_color_for_sport, get_icon_for_sport
+from gui.dialogs.date_picker import DatePickerDialog
 
 
 class CalendarFrame(ttk.Frame):
