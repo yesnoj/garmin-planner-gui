@@ -8,14 +8,16 @@ Dialog per la creazione e modifica di un gruppo di ripetizioni.
 import logging
 import tkinter as tk
 from tkinter import ttk
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List, Tuple
 
 from config import get_config
-from models.workout import WorkoutStep
+from models.workout import WorkoutStep, Target
+from models.zone import PaceZone, HeartRateZone, PowerZone
 from gui.utils import (
-    create_tooltip, show_error, show_warning, ask_yes_no
+    create_tooltip, show_error, show_warning, 
+    validate_pace, validate_power, validate_hr, pace_to_seconds
 )
-from gui.styles import get_icon_for_step
+from gui.dialogs.workout_step import WorkoutStepDialog
 
 
 class RepeatStepDialog(tk.Toplevel):
@@ -28,7 +30,7 @@ class RepeatStepDialog(tk.Toplevel):
         
         Args:
             parent: Widget genitore
-            repeat_step: Step di ripetizione da modificare (None per crearne uno nuovo)
+            repeat_step: Step ripetizione da modificare (None per crearne uno nuovo)
             sport_type: Tipo di sport (running, cycling, swimming)
             callback: Funzione da chiamare alla conferma
         """
@@ -39,23 +41,16 @@ class RepeatStepDialog(tk.Toplevel):
         self.callback = callback
         self.config = get_config()
         
-        # Lista degli step interni
-        if repeat_step and repeat_step.workout_steps:
-            self.steps = repeat_step.workout_steps.copy()
-        else:
-            self.steps = []
-        
-        # Valori predefiniti
+        # Valori predefiniti se non c'è uno step
         if repeat_step:
             self.iterations = repeat_step.end_condition_value or 1
+            self.steps = repeat_step.workout_steps.copy()
         else:
-            self.iterations = 3  # Valore predefinito
+            self.iterations = 1
+            self.steps = []
         
         # Variabili
         self.iterations_var = tk.StringVar(value=str(self.iterations))
-        
-        # Step selezionato
-        self.selected_step_index = None
         
         # Configura il dialog
         self.title("Gruppo di ripetizioni")
@@ -76,7 +71,7 @@ class RepeatStepDialog(tk.Toplevel):
         
         # Aggiungi i callback
         self.protocol("WM_DELETE_WINDOW", self.on_cancel)
-    
+
     def create_widgets(self):
         """Crea i widget del dialog."""
         # Frame principale con padding
@@ -87,78 +82,74 @@ class RepeatStepDialog(tk.Toplevel):
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill=tk.X, pady=(0, 20))
         
-        ttk.Label(header_frame, text="Gruppo di ripetizioni", 
+        ttk.Label(header_frame, text=f"Gruppo di ripetizioni", 
                  style="Title.TLabel").pack(side=tk.LEFT)
         
         # Frame per il numero di ripetizioni
         iterations_frame = ttk.LabelFrame(main_frame, text="Numero di ripetizioni")
         iterations_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(iterations_frame, text="Ripetizioni:").pack(side=tk.LEFT, padx=(10, 5), pady=10)
-        
         iterations_entry = ttk.Entry(iterations_frame, textvariable=self.iterations_var, 
-                                  width=5)
-        iterations_entry.pack(side=tk.LEFT, pady=10)
+                                   width=10)
+        iterations_entry.pack(side=tk.LEFT, padx=10, pady=10)
         
-        # Frame per la lista degli step
-        steps_frame = ttk.LabelFrame(main_frame, text="Step da ripetere")
+        create_tooltip(iterations_entry, "Inserisci il numero di ripetizioni")
+        
+        # Frame per gli step del gruppo
+        steps_frame = ttk.LabelFrame(main_frame, text="Step del gruppo")
         steps_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         # Toolbar per la gestione degli step
         toolbar = ttk.Frame(steps_frame)
-        toolbar.pack(fill=tk.X, padx=10, pady=(10, 5))
+        toolbar.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Button(toolbar, text="Aggiungi step...", 
-                 command=self.add_step).pack(side=tk.LEFT, padx=(0, 5))
+        add_button = ttk.Button(toolbar, text="Aggiungi step...", command=self.add_step)
+        add_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.edit_button = ttk.Button(toolbar, text="Modifica step...", 
                                     command=self.edit_step, state="disabled")
-        self.edit_button.pack(side=tk.LEFT, padx=5)
+        self.edit_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.delete_button = ttk.Button(toolbar, text="Elimina step", 
-                                     command=self.delete_step, state="disabled")
-        self.delete_button.pack(side=tk.LEFT, padx=5)
+                                      command=self.delete_step, state="disabled")
+        self.delete_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.move_up_button = ttk.Button(toolbar, text="Sposta su", 
-                                      command=self.move_step_up, state="disabled")
-        self.move_up_button.pack(side=tk.LEFT, padx=5)
+                                       command=self.move_step_up, state="disabled")
+        self.move_up_button.pack(side=tk.LEFT, padx=(0, 5))
         
         self.move_down_button = ttk.Button(toolbar, text="Sposta giù", 
-                                        command=self.move_step_down, state="disabled")
-        self.move_down_button.pack(side=tk.LEFT, padx=5)
+                                         command=self.move_step_down, state="disabled")
+        self.move_down_button.pack(side=tk.LEFT)
         
         # Lista degli step
-        list_frame = ttk.Frame(steps_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
-        
-        # Crea il treeview
-        columns = ("type", "condition", "value", "description")
-        self.steps_tree = ttk.Treeview(list_frame, columns=columns, show="headings", 
-                                     selectmode="browse")
+        self.steps_list = ttk.Treeview(steps_frame, columns=('step', 'value', 'target'), 
+                                     show='headings', height=8)
+        self.steps_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
         # Intestazioni
-        self.steps_tree.heading("type", text="Tipo")
-        self.steps_tree.heading("condition", text="Condizione")
-        self.steps_tree.heading("value", text="Valore")
-        self.steps_tree.heading("description", text="Descrizione")
+        self.steps_list.heading('step', text='Tipo')
+        self.steps_list.heading('value', text='Valore')
+        self.steps_list.heading('target', text='Target')
         
         # Larghezze colonne
-        self.steps_tree.column("type", width=100)
-        self.steps_tree.column("condition", width=100)
-        self.steps_tree.column("value", width=100)
-        self.steps_tree.column("description", width=250)
+        self.steps_list.column('step', width=100)
+        self.steps_list.column('value', width=150)
+        self.steps_list.column('target', width=200)
         
         # Scrollbar
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.steps_tree.yview)
-        self.steps_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar = ttk.Scrollbar(steps_frame, orient=tk.VERTICAL, 
+                                command=self.steps_list.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 10), pady=(0, 10))
         
-        # Pack
-        self.steps_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.steps_list.configure(yscrollcommand=scrollbar.set)
         
         # Associa evento di selezione
-        self.steps_tree.bind("<<TreeviewSelect>>", self.on_step_selected)
-        self.steps_tree.bind("<Double-1>", lambda e: self.edit_step())
+        self.steps_list.bind('<<TreeviewSelect>>', self.on_step_selected)
+        self.steps_list.bind('<Double-1>', lambda e: self.edit_step())
+        
+        # Popola la lista degli step
+        self.update_steps_list()
         
         # Pulsanti
         buttons_frame = ttk.Frame(main_frame)
@@ -166,81 +157,178 @@ class RepeatStepDialog(tk.Toplevel):
         
         ttk.Button(buttons_frame, text="OK", command=self.on_ok).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(buttons_frame, text="Annulla", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
-        
-        # Popola la lista
-        self.populate_steps_list()
     
-    def populate_steps_list(self):
-        """Popola la lista degli step."""
-        # Pulisci la lista
-        for item in self.steps_tree.get_children():
-            self.steps_tree.delete(item)
+    def update_steps_list(self):
+        """Aggiorna la lista degli step."""
+        # Pulisci la lista attuale
+        for item in self.steps_list.get_children():
+            self.steps_list.delete(item)
+        
+        # Nessuno step selezionato
+        self.edit_button.config(state="disabled")
+        self.delete_button.config(state="disabled")
+        self.move_up_button.config(state="disabled")
+        self.move_down_button.config(state="disabled")
         
         # Aggiungi gli step
         for i, step in enumerate(self.steps):
-            # Ottieni i valori da visualizzare
-            step_type = step.step_type
+            # Formatta il tipo di step
+            step_type = step.step_type.capitalize()
             
-            # Condizione di fine
-            end_condition = step.end_condition
+            # Formatta il valore
+            value = ""
             
-            # Valore
-            if end_condition == "lap.button":
-                value = "Lap button"
-            elif end_condition == "time":
-                # Formatta il tempo
-                if isinstance(step.end_condition_value, str) and ":" in step.end_condition_value:
-                    value = step.end_condition_value
-                elif isinstance(step.end_condition_value, (int, float)):
+            if step.end_condition == "lap.button":
+                value = "Fino a pulsante lap"
+            elif step.end_condition == "time":
+                value_str = step.end_condition_value
+                if isinstance(value_str, (int, float)):
                     # Converti secondi in mm:ss
-                    seconds = int(step.end_condition_value)
+                    seconds = int(value_str)
                     minutes = seconds // 60
                     seconds = seconds % 60
-                    value = f"{minutes}:{seconds:02d}"
-                else:
-                    value = str(step.end_condition_value)
-            elif end_condition == "distance":
-                # Formatta la distanza
-                if isinstance(step.end_condition_value, str):
-                    value = step.end_condition_value
-                elif isinstance(step.end_condition_value, (int, float)):
+                    value_str = f"{minutes}:{seconds:02d}"
+                
+                value = f"Durata: {value_str}"
+            elif step.end_condition == "distance":
+                value_str = step.end_condition_value
+                if isinstance(value_str, (int, float)):
                     # Converti metri in m o km
-                    if step.end_condition_value >= 1000:
-                        value = f"{step.end_condition_value / 1000:.2f}km".replace('.00', '')
+                    if value_str >= 1000:
+                        value_str = f"{value_str / 1000:.2f}km".replace('.00', '')
                     else:
-                        value = f"{int(step.end_condition_value)}m"
-                else:
-                    value = str(step.end_condition_value)
-            else:
-                value = str(step.end_condition_value) if step.end_condition_value is not None else ""
+                        value_str = f"{value_str}m"
+                
+                value = f"Distanza: {value_str}"
+            elif step.end_condition == "iterations":
+                value = f"Ripetizioni: {step.end_condition_value}"
             
-            # Descrizione
-            description = step.description
+            # Formatta il target
+            target = "Nessun target"
             
-            # Aggiungi alla lista
-            self.steps_tree.insert("", "end", 
-                                 values=(step_type, end_condition, value, description), 
-                                 tags=(str(i)))
+            if step.target and step.target.target != "no.target":
+                # Otteniamo la configurazione
+                app_config = get_config()
+                
+                if step.target.target == "pace.zone":
+                    # Converti da m/s a min/km
+                    from_value = step.target.from_value
+                    to_value = step.target.to_value
+                    
+                    if from_value and to_value:
+                        # ms a mm:ss/km
+                        min_pace_secs = int(1000 / from_value)
+                        max_pace_secs = int(1000 / to_value)
+                        
+                        min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
+                        max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
+                        
+                        # Cerca la zona corrispondente
+                        paces = app_config.get(f'sports.{self.sport_type}.paces', {})
+                        zone_name = None
+                        
+                        for name, pace_range in paces.items():
+                            if '-' in pace_range:
+                                pace_min, pace_max = pace_range.split('-')
+                                if pace_min.strip() == min_pace and pace_max.strip() == max_pace:
+                                    zone_name = name
+                                    break
+                            elif pace_range == min_pace and pace_range == max_pace:
+                                zone_name = name
+                                break
+                        
+                        if zone_name:
+                            target = f"Zona {zone_name}"
+                        else:
+                            target = f"Passo {min_pace}-{max_pace} min/km"
+                    
+                elif step.target.target == "heart.rate.zone":
+                    from_value = step.target.from_value
+                    to_value = step.target.to_value
+                    
+                    if from_value and to_value:
+                        # Cerca la zona corrispondente
+                        heart_rates = app_config.get('heart_rates', {})
+                        zone_name = None
+                        
+                        for name, hr_range in heart_rates.items():
+                            if name.endswith('_HR'):
+                                # Calcola valori effettivi usando max_hr
+                                max_hr = heart_rates.get('max_hr', 180)
+                                
+                                if '-' in hr_range and 'max_hr' in hr_range:
+                                    # Formato: 62-76% max_hr
+                                    parts = hr_range.split('-')
+                                    min_percent = float(parts[0])
+                                    max_percent = float(parts[1].split('%')[0])
+                                    hr_min = int(min_percent * max_hr / 100)
+                                    hr_max = int(max_percent * max_hr / 100)
+                                    
+                                    if hr_min <= from_value <= hr_max and hr_min <= to_value <= hr_max:
+                                        zone_name = name
+                                        break
+                        
+                        if zone_name:
+                            target = f"Zona {zone_name}"
+                        else:
+                            target = f"FC {from_value}-{to_value} bpm"
+                    
+                elif step.target.target == "power.zone":
+                    from_value = step.target.from_value
+                    to_value = step.target.to_value
+                    
+                    if from_value and to_value:
+                        # Cerca la zona corrispondente
+                        power_values = app_config.get('sports.cycling.power_values', {})
+                        zone_name = None
+                        
+                        for name, power_range in power_values.items():
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if int(power_min) == from_value and int(power_max) == to_value:
+                                    zone_name = name
+                                    break
+                            elif power_range.startswith('<'):
+                                power_val = int(power_range[1:])
+                                if from_value == 0 and to_value == power_val:
+                                    zone_name = name
+                                    break
+                            elif power_range.endswith('+'):
+                                power_val = int(power_range[:-1])
+                                if from_value == power_val and to_value == 9999:
+                                    zone_name = name
+                                    break
+                            else:
+                                power_val = int(power_range)
+                                if from_value == power_val and to_value == power_val:
+                                    zone_name = name
+                                    break
+                        
+                        if zone_name:
+                            target = f"Zona {zone_name}"
+                        else:
+                            target = f"Potenza {from_value}-{to_value} W"
+            
+            # Aggiungi lo step alla lista
+            self.steps_list.insert("", "end", values=(step_type, value, target), tags=(str(i),))
     
     def on_step_selected(self, event):
         """
-        Gestisce la selezione di uno step.
+        Gestisce la selezione di uno step nella lista.
         
         Args:
             event: Evento Tkinter
         """
-        # Ottieni l'item selezionato
-        selection = self.steps_tree.selection()
+        selection = self.steps_list.selection()
         
         if selection:
+            # Ottieni l'indice dello step selezionato
+            item = selection[0]
+            index = int(self.steps_list.item(item, "tags")[0])
+            
             # Abilita i pulsanti
             self.edit_button.config(state="normal")
             self.delete_button.config(state="normal")
-            
-            # Ottieni l'indice
-            item = selection[0]
-            index = int(self.steps_tree.item(item, "tags")[0])
-            self.selected_step_index = index
             
             # Abilita/disabilita i pulsanti di spostamento
             if index > 0:
@@ -258,109 +346,109 @@ class RepeatStepDialog(tk.Toplevel):
             self.delete_button.config(state="disabled")
             self.move_up_button.config(state="disabled")
             self.move_down_button.config(state="disabled")
-            self.selected_step_index = None
     
     def add_step(self):
-        """Aggiunge un nuovo step."""
-        # Importa qui per evitare import circolari
-        from gui.dialogs.workout_step import WorkoutStepDialog
+        """Aggiunge un nuovo step al gruppo."""
+        # Crea un dialog per lo step
+        dialog = WorkoutStepDialog(self, sport_type=self.sport_type, callback=self.on_step_added)
+    
+    def on_step_added(self, step):
+        """
+        Callback per l'aggiunta di uno step.
         
-        # Crea un nuovo step
-        def on_step_added(step):
-            self.steps.append(step)
-            self.populate_steps_list()
+        Args:
+            step: Step aggiunto
+        """
+        # Aggiungi lo step alla lista
+        self.steps.append(step)
         
-        # Crea il dialog
-        dialog = WorkoutStepDialog(self, callback=on_step_added, sport_type=self.sport_type)
+        # Aggiorna la lista
+        self.update_steps_list()
     
     def edit_step(self):
         """Modifica lo step selezionato."""
-        # Verifica che sia selezionato uno step
-        if self.selected_step_index is None:
-            return
+        selection = self.steps_list.selection()
         
-        # Importa qui per evitare import circolari
-        from gui.dialogs.workout_step import WorkoutStepDialog
+        if selection:
+            # Ottieni l'indice dello step selezionato
+            item = selection[0]
+            index = int(self.steps_list.item(item, "tags")[0])
+            
+            # Ottieni lo step
+            step = self.steps[index]
+            
+            # Crea un dialog per lo step
+            dialog = WorkoutStepDialog(self, step=step, sport_type=self.sport_type, 
+                                      callback=lambda s: self.on_step_edited(index, s))
+    
+    def on_step_edited(self, index, step):
+        """
+        Callback per la modifica di uno step.
         
-        # Ottieni lo step
-        step = self.steps[self.selected_step_index]
+        Args:
+            index: Indice dello step modificato
+            step: Step modificato
+        """
+        # Aggiorna lo step nella lista
+        self.steps[index] = step
         
-        # Crea il dialog
-        def on_step_edited(step):
-            self.steps[self.selected_step_index] = step
-            self.populate_steps_list()
-        
-        # Crea il dialog
-        dialog = WorkoutStepDialog(self, step=step, callback=on_step_edited, sport_type=self.sport_type)
+        # Aggiorna la lista
+        self.update_steps_list()
     
     def delete_step(self):
         """Elimina lo step selezionato."""
-        # Verifica che sia selezionato uno step
-        if self.selected_step_index is None:
-            return
+        selection = self.steps_list.selection()
         
-        # Chiedi conferma
-        if not ask_yes_no("Conferma eliminazione", 
-                        "Sei sicuro di voler eliminare questo step?", 
-                        parent=self):
-            return
-        
-        # Elimina lo step
-        del self.steps[self.selected_step_index]
-        
-        # Aggiorna la lista
-        self.populate_steps_list()
-        
-        # Deseleziona
-        self.selected_step_index = None
-        self.edit_button.config(state="disabled")
-        self.delete_button.config(state="disabled")
-        self.move_up_button.config(state="disabled")
-        self.move_down_button.config(state="disabled")
+        if selection:
+            # Ottieni l'indice dello step selezionato
+            item = selection[0]
+            index = int(self.steps_list.item(item, "tags")[0])
+            
+            # Rimuovi lo step dalla lista
+            del self.steps[index]
+            
+            # Aggiorna la lista
+            self.update_steps_list()
     
     def move_step_up(self):
         """Sposta lo step selezionato verso l'alto."""
-        # Verifica che sia selezionato uno step
-        if self.selected_step_index is None or self.selected_step_index == 0:
-            return
+        selection = self.steps_list.selection()
         
-        # Scambia gli step
-        self.steps[self.selected_step_index], self.steps[self.selected_step_index - 1] = \
-            self.steps[self.selected_step_index - 1], self.steps[self.selected_step_index]
-        
-        # Aggiorna l'indice selezionato
-        self.selected_step_index -= 1
-        
-        # Aggiorna la lista
-        self.populate_steps_list()
-        
-        # Seleziona lo step spostato
-        items = self.steps_tree.get_children("")
-        if 0 <= self.selected_step_index < len(items):
-            self.steps_tree.selection_set(items[self.selected_step_index])
-            self.steps_tree.see(items[self.selected_step_index])
+        if selection:
+            # Ottieni l'indice dello step selezionato
+            item = selection[0]
+            index = int(self.steps_list.item(item, "tags")[0])
+            
+            # Verifica che non sia il primo step
+            if index > 0:
+                # Scambia gli step
+                self.steps[index], self.steps[index - 1] = self.steps[index - 1], self.steps[index]
+                
+                # Aggiorna la lista
+                self.update_steps_list()
+                
+                # Seleziona lo step spostato
+                self.steps_list.selection_set(self.steps_list.get_children()[index - 1])
     
     def move_step_down(self):
         """Sposta lo step selezionato verso il basso."""
-        # Verifica che sia selezionato uno step
-        if self.selected_step_index is None or self.selected_step_index >= len(self.steps) - 1:
-            return
+        selection = self.steps_list.selection()
         
-        # Scambia gli step
-        self.steps[self.selected_step_index], self.steps[self.selected_step_index + 1] = \
-            self.steps[self.selected_step_index + 1], self.steps[self.selected_step_index]
-        
-        # Aggiorna l'indice selezionato
-        self.selected_step_index += 1
-        
-        # Aggiorna la lista
-        self.populate_steps_list()
-        
-        # Seleziona lo step spostato
-        items = self.steps_tree.get_children("")
-        if 0 <= self.selected_step_index < len(items):
-            self.steps_tree.selection_set(items[self.selected_step_index])
-            self.steps_tree.see(items[self.selected_step_index])
+        if selection:
+            # Ottieni l'indice dello step selezionato
+            item = selection[0]
+            index = int(self.steps_list.item(item, "tags")[0])
+            
+            # Verifica che non sia l'ultimo step
+            if index < len(self.steps) - 1:
+                # Scambia gli step
+                self.steps[index], self.steps[index + 1] = self.steps[index + 1], self.steps[index]
+                
+                # Aggiorna la lista
+                self.update_steps_list()
+                
+                # Seleziona lo step spostato
+                self.steps_list.selection_set(self.steps_list.get_children()[index + 1])
     
     def validate(self) -> bool:
         """
@@ -369,19 +457,21 @@ class RepeatStepDialog(tk.Toplevel):
         Returns:
             True se i dati sono validi, False altrimenti
         """
-        # Verifica che il numero di ripetizioni sia valido
+        # Valida il numero di ripetizioni
         try:
             iterations = int(self.iterations_var.get())
+            
             if iterations <= 0:
                 show_error("Errore", "Il numero di ripetizioni deve essere maggiore di zero", parent=self)
                 return False
+            
         except ValueError:
-            show_error("Errore", "Il numero di ripetizioni deve essere un numero intero", parent=self)
+            show_error("Errore", "Il numero di ripetizioni deve essere un intero", parent=self)
             return False
         
-        # Verifica che ci siano degli step
+        # Valida che ci sia almeno uno step
         if not self.steps:
-            show_error("Errore", "Aggiungi almeno uno step da ripetere", parent=self)
+            show_error("Errore", "Il gruppo deve contenere almeno uno step", parent=self)
             return False
         
         return True
@@ -392,10 +482,10 @@ class RepeatStepDialog(tk.Toplevel):
         if not self.validate():
             return
         
-        # Ottieni il numero di ripetizioni
+        # Ottieni i valori
         iterations = int(self.iterations_var.get())
         
-        # Crea o aggiorna lo step di ripetizione
+        # Crea o aggiorna lo step
         if self.repeat_step:
             # Aggiorna lo step esistente
             self.repeat_step.end_condition_value = iterations
@@ -431,8 +521,17 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
     
-    # Crea un dialog con uno step nuovo
-    dialog = RepeatStepDialog(root)
+    def on_repeat_added(repeat_step):
+        """Callback per l'aggiunta di un gruppo di ripetizioni."""
+        if repeat_step:
+            print(f"Gruppo di ripetizioni aggiunto: {repeat_step.end_condition_value} ripetizioni")
+            for step in repeat_step.workout_steps:
+                print(f"  - {step.step_type}: {step.end_condition_value}")
+        else:
+            print("Aggiunta annullata")
+    
+    # Crea un dialog per un nuovo gruppo
+    dialog = RepeatStepDialog(root, callback=on_repeat_added)
     
     # Avvia il loop
     root.mainloop()

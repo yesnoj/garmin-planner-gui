@@ -421,7 +421,7 @@ class WorkoutStepDialog(tk.Toplevel):
                 # Format N+
                 power = power_range[:-1]
                 min_power_value = int(power)
-                max_power_value = 999
+                max_power_value = 9999
             else:
                 # Single value format N - APPLY MARGINS
                 power_value = int(power_range)
@@ -436,24 +436,6 @@ class WorkoutStepDialog(tk.Toplevel):
             self.target_min_var.set(str(min_power_value))
             self.target_max_var.set(str(max_power_value))
     
-    def pace_to_seconds(pace):
-        """Convert a pace string (mm:ss format) to seconds."""
-        parts = pace.split(':')
-        if len(parts) != 2:
-            return 0
-        try:
-            minutes = int(parts[0])
-            seconds = int(parts[1])
-            return minutes * 60 + seconds
-        except ValueError:
-            return 0
-
-    def seconds_to_pace(seconds):
-        """Convert seconds to a pace string (mm:ss format)."""
-        minutes = int(seconds) // 60
-        remaining_seconds = int(seconds) % 60
-        return f"{minutes}:{remaining_seconds:02d}"
-
     def on_step_type_change(self):
         """Gestisce il cambio di tipo di step."""
         step_type = self.step_type_var.get()

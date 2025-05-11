@@ -1,0 +1,53 @@
+config:
+  name_prefix: ''
+  margins:
+    faster: 0:02
+    slower: 0:02
+    power_up: 10
+    power_down: 10
+    hr_up: 5
+    hr_down: 5
+  athlete_name: Francesco Prochilo
+  race_day: ''
+  preferred_days: '[1, 3, 5]'
+  heart_rates:
+    max_hr: 180
+    Z1_HR: 62-76% max_hr
+    Z2_HR: 76-85% max_hr
+    Z3_HR: 85-91% max_hr
+    Z4_HR: 91-95% max_hr
+    Z5_HR: 95-100% max_hr
+paces:
+  Z1: '6:35'
+  Z2: '6:20'
+  Z3: '6:00'
+  Z4: '5:20'
+  Z5: '4:50'
+  recovery: 7:00-6:30
+  threshold: 5:10-4:50
+  marathon: 5:20-5:10
+  race_pace: '4:50'
+swim_paces:
+  Z1: 2:30-2:15
+  Z2: 2:15-2:00
+  Z3: 2:00-1:45
+  Z4: 1:45-1:30
+  Z5: 1:30-1:15
+  recovery: 2:45-2:30
+  threshold: 1:55-1:40
+  sprint: 1:25-1:15
+power_values:
+  ftp: '250'
+  Z1: 125-175
+  Z2: 175-215
+  Z3: 215-250
+  Z4: 250-300
+  Z5: 300-375
+  Z6: 375+
+  recovery: <125
+  threshold: 235-265
+  sweet_spot: 220-235
+Corsa:
+- sport_type: running
+- date: '2025-05-01'
+- interval: 10:36min @ Z1

@@ -10,8 +10,8 @@ import re
 import yaml
 from typing import Dict, Any, List, Tuple, Optional
 
+from config import get_config  # Assicuriamoci che questa importazione sia a livello di file
 from models.workout import Workout, WorkoutStep, Target, create_workout_from_yaml
-
 
 class YamlService:
     """Servizio per la gestione dei file YAML."""
@@ -87,7 +87,7 @@ class YamlService:
             name_prefix = config_data.get('name_prefix', '')
             
             # Nomi speciali da ignorare
-            ignore_keys = ['config', 'heart_rates', 'paces', 'margins']
+            ignore_keys = ['config', 'heart_rates', 'paces', 'swim_paces', 'power_values', 'margins', 'athlete_name']
             
             # Lista degli allenamenti importati
             imported_workouts = []
@@ -130,8 +130,42 @@ class YamlService:
             yaml.YAMLError: Se i dati non possono essere convertiti in YAML
         """
         try:
+            # Ottieni le impostazioni complete di configurazione
+            app_config = get_config()
+            
             # Crea il dizionario per il YAML
             yaml_data = {'config': config or {}}
+            
+            # Aggiungi informazioni complete nella configurazione
+            yaml_data['config'].update({
+                'margins': {
+                    'faster': app_config.get('sports.running.margins.faster', '0:05'),
+                    'slower': app_config.get('sports.running.margins.slower', '0:05'),
+                    'power_up': app_config.get('sports.cycling.margins.power_up', 10),
+                    'power_down': app_config.get('sports.cycling.margins.power_down', 10),
+                    'hr_up': app_config.get('hr_margins.hr_up', 5),
+                    'hr_down': app_config.get('hr_margins.hr_down', 5),
+                },
+                'athlete_name': app_config.get('athlete_name', ''),
+                'race_day': app_config.get('planning.race_day', ''),
+                'preferred_days': str(app_config.get('planning.preferred_days', [1, 3, 5])),
+            })
+            
+            # Aggiungi le informazioni di heart_rates
+            yaml_data['config']['heart_rates'] = {
+                'max_hr': app_config.get('heart_rates.max_hr', 180)
+            }
+            
+            # Aggiungi le zone di frequenza cardiaca alla configurazione
+            heart_rates = app_config.get('heart_rates', {})
+            for name, value in heart_rates.items():
+                if name.endswith('_HR'):
+                    yaml_data['config']['heart_rates'][name] = value
+            
+            # Aggiungi i paces, swim_paces e power_values
+            yaml_data['paces'] = app_config.get('sports.running.paces', {})
+            yaml_data['swim_paces'] = app_config.get('sports.swimming.paces', {})
+            yaml_data['power_values'] = app_config.get('sports.cycling.power_values', {})
             
             # Per ogni allenamento
             for name, workout in workouts:
@@ -166,6 +200,19 @@ class YamlService:
         steps.append({
             'sport_type': workout.sport_type
         })
+        
+        # Per ogni step dell'allenamento, trova la data se presente
+        date_step = None
+        for step in workout.workout_steps:
+            if hasattr(step, 'date') and step.date:
+                date_step = {
+                    'date': step.date
+                }
+                break
+        
+        # Aggiungi la data se trovata
+        if date_step:
+            steps.append(date_step)
         
         # Per ogni step dell'allenamento
         for step in workout.workout_steps:
@@ -202,9 +249,14 @@ class YamlService:
                 
                 # Crea lo step ripetizione
                 return {
-                    f'repeat {step.end_condition_value}': repeat_steps
+                    'repeat': step.end_condition_value,
+                    'steps': repeat_steps
                 }
             
+            # Skip date step (handled separately)
+            if hasattr(step, 'date') and step.date:
+                return None
+                
             # Step normale
             value = ""
             
@@ -212,15 +264,28 @@ class YamlService:
             if step.end_condition == 'lap.button':
                 value = "lap-button"
             elif step.end_condition == 'time':
-                # Formatta il tempo
+                # Formatta il tempo MANTENENDO I SECONDI
                 if isinstance(step.end_condition_value, str) and ":" in step.end_condition_value:
-                    # Già nel formato mm:ss
-                    value = step.end_condition_value
+                    # Già nel formato mm:ss - MANTIENI IL FORMATO ORIGINALE
+                    min_sec = step.end_condition_value.split(':')
+                    minutes = int(min_sec[0])
+                    seconds = int(min_sec[1]) if len(min_sec) > 1 else 0
+                    
+                    if seconds > 0:
+                        value = f"{minutes}:{seconds:02d}min"  # Formato mm:ssmin
+                    else:
+                        value = f"{minutes}min"
                 elif isinstance(step.end_condition_value, (int, float)):
-                    # Converti secondi in min per valori > 60s
+                    # Converti secondi in mm:ss per valori > 60s
                     seconds = int(step.end_condition_value)
                     if seconds >= 60:
-                        value = f"{seconds // 60}min"
+                        minutes = seconds // 60
+                        remaining_seconds = seconds % 60
+                        
+                        if remaining_seconds > 0:
+                            value = f"{minutes}:{remaining_seconds:02d}min"  # Formato mm:ssmin
+                        else:
+                            value = f"{minutes}min"
                     else:
                         value = f"{seconds}s"
                 else:
@@ -242,22 +307,179 @@ class YamlService:
             
             # Aggiungi il target se presente
             if step.target and step.target.target != 'no.target':
-                if step.target.target == 'pace.zone' and step.target.from_value and step.target.to_value:
-                    # Converti da m/s a min/km
-                    min_pace_secs = int(1000 / step.target.from_value)
-                    max_pace_secs = int(1000 / step.target.to_value)
+                # Determina il tipo di sport per scegliere il set di zone
+                sport_type = step.sport_type if hasattr(step, "sport_type") else "running"
+                
+                # Verifica se è presente la zona memorizzata
+                # Questo è un campo che potrebbe non essere presente in versioni precedenti
+                if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                    value += f" @ {step.target.target_zone_name}"
+                
+                # Altrimenti, usa un approccio drastico basato sui valori numerici
+                else:
+                    # Ottieni i valori target
+                    has_values = False
                     
-                    min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
-                    max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
+                    if step.target.target == 'heart.rate.zone' and step.target.from_value and step.target.to_value:
+                        from_value = int(step.target.from_value)
+                        to_value = int(step.target.to_value)
+                        has_values = True
+                        
+                        # Usa una mappatura diretta per zone HR (approccio drastico)
+                        HR_ZONE_RANGES = {
+                            'Z1_HR': (100, 140),  # Approx 55-75% of max HR
+                            'Z2_HR': (135, 155),  # Approx 75-85% of max HR
+                            'Z3_HR': (150, 165),  # Approx 85-90% of max HR
+                            'Z4_HR': (165, 175),  # Approx 90-95% of max HR
+                            'Z5_HR': (170, 190)   # Approx 95-100% of max HR
+                        }
+                        
+                        # Trova la zona più vicina
+                        avg_value = (from_value + to_value) / 2
+                        closest_zone = None
+                        closest_diff = float('inf')
+                        
+                        for zone_name, (zone_min, zone_max) in HR_ZONE_RANGES.items():
+                            zone_avg = (zone_min + zone_max) / 2
+                            diff = abs(avg_value - zone_avg)
+                            
+                            if diff < closest_diff:
+                                closest_diff = diff
+                                closest_zone = zone_name
+                        
+                        if closest_zone:
+                            value += f" @ {closest_zone}"
+                        else:
+                            value += f" @ {from_value}-{to_value} bpm"
                     
-                    if min_pace == max_pace:
-                        value += f" @ {min_pace}"
-                    else:
-                        value += f" @ {min_pace}-{max_pace}"
-                elif step.target.target == 'heart.rate.zone' and step.target.from_value and step.target.to_value:
-                    value += f" @hr {step.target.from_value}-{step.target.to_value}"
-                elif step.target.target == 'power.zone' and step.target.from_value and step.target.to_value:
-                    value += f" @pwr {step.target.from_value}-{step.target.to_value}"
+                    elif step.target.target == 'pace.zone' and step.target.from_value and step.target.to_value:
+                        # Converti da m/s a min/km
+                        from_pace_secs = 1000.0 / step.target.from_value
+                        to_pace_secs = 1000.0 / step.target.to_value
+                        has_values = True
+                        
+                        # Formatta per la visualizzazione
+                        from_pace_mins = int(from_pace_secs / 60)
+                        from_pace_s = round(from_pace_secs % 60)
+                        if from_pace_s == 60:
+                            from_pace_mins += 1
+                            from_pace_s = 0
+                            
+                        to_pace_mins = int(to_pace_secs / 60)
+                        to_pace_s = round(to_pace_secs % 60)
+                        if to_pace_s == 60:
+                            to_pace_mins += 1
+                            to_pace_s = 0
+                        
+                        # Assicurati di avere l'ordine corretto (più veloce -> più lento)
+                        if from_pace_secs > to_pace_secs:
+                            from_pace_secs, to_pace_secs = to_pace_secs, from_pace_secs
+                            from_pace_mins, to_pace_mins = to_pace_mins, from_pace_mins
+                            from_pace_s, to_pace_s = to_pace_s, from_pace_s
+                        
+                        # Mappatura diretta per zone di passo
+                        if sport_type == "running":
+                            # Valori approssimativi per le zone in min/km
+                            PACE_ZONE_RANGES = {
+                                'Z1': (6, 7),       # Zona di recupero facile
+                                'Z2': (5.5, 6.5),   # Zona aerobica
+                                'Z3': (5, 6),       # Zona tempo 
+                                'Z4': (4.5, 5.5),   # Zona soglia
+                                'Z5': (4, 5),       # Zona VO2max
+                                'recovery': (6.5, 7.5),
+                                'threshold': (4.7, 5.3),
+                                'marathon': (5, 5.5),
+                                'race_pace': (4.5, 5)
+                            }
+                        elif sport_type == "swimming":
+                            # Valori per nuoto in min/100m
+                            PACE_ZONE_RANGES = {
+                                'Z1': (2, 2.5),  
+                                'Z2': (1.8, 2.2),
+                                'Z3': (1.7, 2),
+                                'Z4': (1.5, 1.8),
+                                'Z5': (1.3, 1.6),
+                                'recovery': (2.3, 2.7),
+                                'threshold': (1.8, 2),
+                                'sprint': (1.2, 1.5)
+                            }
+                        else:
+                            # Default a running se non riconosciuto
+                            PACE_ZONE_RANGES = {
+                                'Z1': (6, 7),
+                                'Z2': (5.5, 6.5),
+                                'Z3': (5, 6),
+                                'Z4': (4.5, 5.5),
+                                'Z5': (4, 5)
+                            }
+                        
+                        # Trova la zona più vicina
+                        avg_pace_mins = (from_pace_mins + to_pace_mins) / 2
+                        avg_pace_s = (from_pace_s + to_pace_s) / 2
+                        avg_pace = avg_pace_mins + (avg_pace_s / 60)
+                        
+                        closest_zone = None
+                        closest_diff = float('inf')
+                        
+                        for zone_name, (zone_min, zone_max) in PACE_ZONE_RANGES.items():
+                            zone_avg = (zone_min + zone_max) / 2
+                            diff = abs(avg_pace - zone_avg)
+                            
+                            if diff < closest_diff:
+                                closest_diff = diff
+                                closest_zone = zone_name
+                        
+                        if closest_zone:
+                            value += f" @ {closest_zone}"
+                        else:
+                            from_pace = f"{from_pace_mins}:{from_pace_s:02d}"
+                            to_pace = f"{to_pace_mins}:{to_pace_s:02d}"
+                            value += f" @ {from_pace}-{to_pace}"
+                    
+                    elif step.target.target == 'power.zone' and step.target.from_value and step.target.to_value:
+                        from_value = int(step.target.from_value)
+                        to_value = int(step.target.to_value)
+                        has_values = True
+                        
+                        # Assicurati di avere l'ordine corretto
+                        if from_value > to_value:
+                            from_value, to_value = to_value, from_value
+                        
+                        # Usare una mappatura diretta per zone di potenza
+                        # Basata su zone FTP tipiche
+                        POWER_ZONE_RANGES = {
+                            'Z1': (100, 175),       # 40-70% FTP - Recupero attivo
+                            'Z2': (175, 215),       # 70-85% FTP - Endurance
+                            'Z3': (215, 250),       # 85-100% FTP - Tempo
+                            'Z4': (250, 300),       # 100-120% FTP - Soglia/VO2
+                            'Z5': (300, 375),       # 120-150% FTP - VO2max/Anaerobico
+                            'Z6': (375, 450),       # 150%+ FTP - Anaerobico/Neuromuscolare
+                            'recovery': (0, 125),   # <50% FTP 
+                            'threshold': (235, 265), # 95-105% FTP
+                            'sweet_spot': (220, 235) # 88-94% FTP
+                        }
+                        
+                        # Trova la zona più vicina
+                        avg_value = (from_value + to_value) / 2
+                        closest_zone = None
+                        closest_diff = float('inf')
+                        
+                        for zone_name, (zone_min, zone_max) in POWER_ZONE_RANGES.items():
+                            zone_avg = (zone_min + zone_max) / 2
+                            diff = abs(avg_value - zone_avg)
+                            
+                            if diff < closest_diff:
+                                closest_diff = diff
+                                closest_zone = zone_name
+                        
+                        if closest_zone:
+                            value += f" @ {closest_zone}"
+                        else:
+                            value += f" @ {from_value}-{to_value}W"
+                    
+                    elif not has_values:
+                        # Caso generico se non abbiamo valori
+                        value += " @ Z2"  # Default generico
             
             # Aggiungi la descrizione se presente
             if step.description:
@@ -269,3 +491,271 @@ class YamlService:
         except Exception as e:
             logging.error(f"Errore nella conversione dello step: {str(e)}")
             return None
+
+
+    def parse_step(step_type: str, value: str) -> WorkoutStep:
+        """
+        Analizza un valore di step dal YAML.
+        
+        Args:
+            step_type: Tipo di step
+            value: Valore dello step
+            
+        Returns:
+            Step creato
+            
+        Raises:
+            ValueError: Se il valore non è valido
+        """
+        # Importazione necessaria
+        from config import get_config
+        
+        # Valori di default
+        end_condition = "lap.button"
+        end_condition_value = None
+        target_type = "no.target"
+        target_from = None
+        target_to = None
+        description = ""
+        
+        # Estrai la descrizione se presente
+        if ' -- ' in value:
+            value, description = value.split(' -- ', 1)
+        
+        # Estrai il target se presente
+        if ' @ ' in value:
+            value, target = value.split(' @ ', 1)
+            
+            # Determina il tipo di target
+            if target.startswith('Z') and '_HR' in target:
+                # Zona di frequenza cardiaca (Z1_HR, Z2_HR, ecc.)
+                target_type = "heart.rate.zone"
+                
+                # Ottieni i valori HR dalla configurazione
+                app_config = get_config()
+                heart_rates = app_config.get('heart_rates', {})
+                max_hr = heart_rates.get('max_hr', 180)
+                
+                # Cerca la zona corrispondente
+                if target in heart_rates:
+                    hr_range = heart_rates[target]
+                    
+                    if '-' in hr_range and 'max_hr' in hr_range:
+                        # Formato: 62-76% max_hr
+                        parts = hr_range.split('-')
+                        min_percent = float(parts[0])
+                        max_percent = float(parts[1].split('%')[0])
+                        
+                        # Converti in valori assoluti
+                        target_from = int(min_percent * max_hr / 100)
+                        target_to = int(max_percent * max_hr / 100)
+                else:
+                    # Default se la zona non è trovata
+                    target_from = 120
+                    target_to = 140
+            
+            elif target.startswith('Z') or target in ['recovery', 'threshold', 'marathon', 'race_pace']:
+                # Zona di passo (Z1, Z2, recovery, threshold, ecc.)
+                target_type = "pace.zone"
+                
+                # Ottieni i valori del passo dalla configurazione
+                app_config = get_config()
+                paces = app_config.get('paces', {})
+                
+                # Cerca la zona corrispondente
+                if target in paces:
+                    pace_range = paces[target]
+                    
+                    if '-' in pace_range:
+                        # Formato: min:sec-min:sec
+                        min_pace, max_pace = pace_range.split('-')
+                        min_pace = min_pace.strip()
+                        max_pace = max_pace.strip()
+                    else:
+                        # Formato: min:sec (valore singolo)
+                        min_pace = max_pace = pace_range.strip()
+                    
+                    # Converti da min:sec a secondi
+                    def pace_to_seconds(pace_str):
+                        parts = pace_str.split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    
+                    min_pace_secs = pace_to_seconds(min_pace)
+                    max_pace_secs = pace_to_seconds(max_pace)
+                    
+                    # Converti da secondi a m/s (inverti min e max)
+                    target_from = 1000 / max_pace_secs  # Passo più veloce
+                    target_to = 1000 / min_pace_secs    # Passo più lento
+                else:
+                    # Default se la zona non è trovata
+                    target_from = 3.0  # ~5:30 min/km
+                    target_to = 2.5    # ~6:40 min/km
+            
+            elif target in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'recovery', 'threshold', 'sweet_spot']:
+                # Zona di potenza (per ciclismo)
+                target_type = "power.zone"
+                
+                # Ottieni i valori di potenza dalla configurazione
+                app_config = get_config()
+                power_values = app_config.get('power_values', {})
+                
+                # Cerca la zona corrispondente
+                if target in power_values:
+                    power_range = power_values[target]
+                    
+                    if isinstance(power_range, str):
+                        if '-' in power_range:
+                            # Formato: N-N
+                            min_power, max_power = power_range.split('-')
+                            target_from = int(min_power.strip())
+                            target_to = int(max_power.strip())
+                        elif power_range.startswith('<'):
+                            # Formato: <N
+                            power_val = int(power_range[1:].strip())
+                            target_from = 0
+                            target_to = power_val
+                        elif power_range.endswith('+'):
+                            # Formato: N+
+                            power_val = int(power_range[:-1].strip())
+                            target_from = power_val
+                            target_to = 9999  # Valore alto per "infinito"
+                        else:
+                            # Valore singolo
+                            power_val = int(power_range.strip())
+                            target_from = power_val
+                            target_to = power_val
+                    else:
+                        # Valore numerico
+                        target_from = power_values[target]
+                        target_to = power_values[target]
+                else:
+                    # Default se la zona non è trovata
+                    target_from = 200
+                    target_to = 250
+                    
+            elif '@hr' in target:
+                # Frequenza cardiaca
+                target_type = "heart.rate.zone"
+                target = target.replace('@hr', '').strip()
+                
+                # Estrai i valori se è un intervallo
+                if '-' in target:
+                    min_hr, max_hr = target.split('-')
+                    target_from = int(min_hr.strip())
+                    target_to = int(max_hr.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+                else:
+                    # Valore singolo
+                    hr_val = int(target.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+                    target_from = hr_val
+                    target_to = hr_val
+                    
+            elif '@pwr' in target:
+                # Potenza
+                target_type = "power.zone"
+                target = target.replace('@pwr', '').strip()
+                
+                # Estrai i valori se è un intervallo
+                if '-' in target:
+                    min_power, max_power = target.split('-')
+                    target_from = int(min_power.strip())
+                    target_to = int(max_power.strip().split(' ')[0])  # Rimuovi "W" se presente
+                else:
+                    # Valore singolo
+                    power_val = int(target.strip().split(' ')[0])  # Rimuovi "W" se presente
+                    target_from = power_val
+                    target_to = power_val
+            
+            else:
+                # Cerca di interpretare il target come un passo o un valore numerico
+                target_type = "pace.zone"
+                
+                # Verifica se il formato è min:sec-min:sec
+                if '-' in target and ':' in target:
+                    min_pace, max_pace = target.split('-')
+                    
+                    # Converti da min:sec a secondi
+                    def parse_pace(pace_str):
+                        parts = pace_str.strip().split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    
+                    try:
+                        min_pace_secs = parse_pace(min_pace)
+                        max_pace_secs = parse_pace(max_pace)
+                        
+                        # Converti da secondi a m/s (inverti min e max)
+                        target_from = 1000 / max_pace_secs  # Passo più veloce
+                        target_to = 1000 / min_pace_secs    # Passo più lento
+                    except (ValueError, IndexError):
+                        # Default se non riesce a interpretare
+                        target_from = 3.0  # ~5:30 min/km
+                        target_to = 2.5    # ~6:40 min/km
+                else:
+                    # Default se non è un formato riconoscibile
+                    target_from = 3.0
+                    target_to = 2.5
+        
+        # Analizza la condizione di fine
+        if value == "lap-button":
+            end_condition = "lap.button"
+        elif value.endswith('min'):
+            # Formato: Nmin o N:SSmin
+            end_condition = "time"
+            
+            if ':' in value:
+                # Formato: N:SSmin
+                time_value = value[:-3]  # Rimuovi "min"
+                try:
+                    minutes, seconds = time_value.split(':')
+                    end_condition_value = int(minutes) * 60 + int(seconds)  # Converti in secondi
+                except (ValueError, IndexError):
+                    end_condition_value = 60  # Default: 1 minuto
+            else:
+                # Formato: Nmin
+                try:
+                    minutes = int(value[:-3])
+                    end_condition_value = minutes * 60  # Secondi
+                except ValueError:
+                    end_condition_value = 60  # Default: 1 minuto
+        elif value.endswith('s'):
+            # Formato: Ns
+            end_condition = "time"
+            try:
+                end_condition_value = int(value[:-1])  # Secondi
+            except ValueError:
+                end_condition_value = 30  # Default: 30 secondi
+        elif value.endswith('km'):
+            # Formato: N.Nkm
+            end_condition = "distance"
+            try:
+                end_condition_value = float(value[:-2]) * 1000  # Metri
+            except ValueError:
+                end_condition_value = 1000  # Default: 1 km
+        elif value.endswith('m'):
+            # Formato: Nm
+            end_condition = "distance"
+            try:
+                end_condition_value = int(value[:-1])  # Metri
+            except ValueError:
+                end_condition_value = 100  # Default: 100 m
+        
+        # Crea il target
+        target = Target(target_type, target_to, target_from)
+        # Aggiungi il nome della zona se riconosciuto
+        if ' @ ' in value:
+            _, zone_name = value.split(' @ ', 1)
+            if zone_name in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z1_HR', 'Z2_HR', 'Z3_HR', 'Z4_HR', 'Z5_HR', 
+                             'recovery', 'threshold', 'marathon', 'race_pace', 'sweet_spot', 'sprint']:
+                if hasattr(target, 'target_zone_name'):
+                    target.target_zone_name = zone_name
+        
+        # Crea lo step
+        step = WorkoutStep(
+            order=0,
+            step_type=step_type,
+            description=description,
+            end_condition=end_condition,
+            end_condition_value=end_condition_value,
+            target=target
+        )
+        
+        return step

@@ -7,6 +7,7 @@ Servizio per la gestione dei file Excel.
 
 import logging
 import re
+import os
 from typing import Dict, Any, List, Tuple, Optional
 
 try:
@@ -15,6 +16,7 @@ try:
 except ImportError:
     PANDAS_AVAILABLE = False
 
+from config import get_config
 from models.workout import Workout, WorkoutStep, Target
 
 
@@ -87,6 +89,14 @@ class ExcelService:
                         # Tipo di sport
                         sport_type = df.loc[row_idx, 'Sport'].lower() if pd.notna(df.loc[row_idx, 'Sport']) else 'running'
                         
+                        # Data dell'allenamento (se presente)
+                        workout_date = None
+                        if 'Data' in df.columns and pd.notna(df.loc[row_idx, 'Data']):
+                            workout_date = df.loc[row_idx, 'Data']
+                            # Converti in stringa nel formato YYYY-MM-DD
+                            if isinstance(workout_date, pd.Timestamp):
+                                workout_date = workout_date.strftime('%Y-%m-%d')
+                                
                         # Righe degli step
                         next_workout_row = workout_rows[i + 1] if i + 1 < len(workout_rows) else len(df)
                         step_rows = range(row_idx + 1, next_workout_row)
@@ -96,6 +106,12 @@ class ExcelService:
                         
                         # Per ogni step
                         current_repeat = None
+                        
+                        # Se c'è una data, aggiungi uno step speciale con la data
+                        if workout_date:
+                            date_step = WorkoutStep(0, "warmup")
+                            date_step.date = workout_date
+                            workout.add_step(date_step)
                         
                         for step_idx in step_rows:
                             # Verifica che la riga contenga uno step valido
@@ -139,7 +155,62 @@ class ExcelService:
                                     target_str = str(df.loc[step_idx, 'Target'])
                                     
                                     # Analizza il target
-                                    if '-' in target_str:
+                                    if '@' in target_str:
+                                        # Formato zone @ Z1_HR o @ Z2
+                                        parts = target_str.split('@')
+                                        zone_name = parts[1].strip()
+                                        
+                                        # Otteniamo i valori dalla configurazione
+                                        config = get_config()
+                                        
+                                        # Determina il tipo di zona
+                                        if '_HR' in zone_name:
+                                            # Zona di frequenza cardiaca
+                                            target = Target('heart.rate.zone')
+                                            
+                                            # Calcola i valori dalla configurazione
+                                            hr_zones = config.get('heart_rates', {})
+                                            hr_zone = hr_zones.get(zone_name, '')
+                                            
+                                            if hr_zone and '-' in hr_zone and 'max_hr' in hr_zone:
+                                                # Formato: 62-76% max_hr
+                                                max_hr = hr_zones.get('max_hr', 180)
+                                                parts = hr_zone.split('-')
+                                                min_percent = float(parts[0])
+                                                max_percent = float(parts[1].split('%')[0])
+                                                
+                                                target.from_value = int(min_percent * max_hr / 100)
+                                                target.to_value = int(max_percent * max_hr / 100)
+                                        else:
+                                            # Prova con zone di passo
+                                            paces = config.get(f'sports.{sport_type}.paces', {})
+                                            pace_zone = paces.get(zone_name, '')
+                                            
+                                            if pace_zone:
+                                                target = Target('pace.zone')
+                                                
+                                                # Converti da min/km a m/s
+                                                if '-' in pace_zone:
+                                                    min_pace, max_pace = pace_zone.split('-')
+                                                else:
+                                                    min_pace = max_pace = pace_zone
+                                                
+                                                # Funzione per convertire mm:ss in secondi
+                                                def pace_to_seconds(pace):
+                                                    parts = pace.strip().split(':')
+                                                    if len(parts) == 2:
+                                                        return int(parts[0]) * 60 + int(parts[1])
+                                                    return 0
+                                                
+                                                # Converti da mm:ss/km a m/s
+                                                min_pace_secs = pace_to_seconds(min_pace)
+                                                max_pace_secs = pace_to_seconds(max_pace)
+                                                
+                                                if min_pace_secs > 0 and max_pace_secs > 0:
+                                                    # Converti da secondi/km a m/s
+                                                    target.from_value = 1000 / max_pace_secs  # Passo più veloce (secondi minori)
+                                                    target.to_value = 1000 / min_pace_secs    # Passo più lento (secondi maggiori)
+                                    elif '-' in target_str:
                                         # Intervallo (es. "4:00-4:30" per passo)
                                         parts = target_str.split('-')
                                         
@@ -147,12 +218,35 @@ class ExcelService:
                                         if ':' in target_str:
                                             # Passo
                                             target = Target('pace.zone')
+                                            
+                                            # Funzione per convertire mm:ss in secondi
+                                            def pace_to_seconds(pace):
+                                                parts = pace.strip().split(':')
+                                                if len(parts) == 2:
+                                                    return int(parts[0]) * 60 + int(parts[1])
+                                                return 0
+                                            
+                                            # Converti da mm:ss/km a m/s
+                                            min_pace = parts[0].strip()
+                                            max_pace = parts[1].strip()
+                                            
+                                            min_pace_secs = pace_to_seconds(min_pace)
+                                            max_pace_secs = pace_to_seconds(max_pace)
+                                            
+                                            if min_pace_secs > 0 and max_pace_secs > 0:
+                                                # Converti da secondi/km a m/s
+                                                target.from_value = 1000 / max_pace_secs  # Passo più veloce (secondi minori)
+                                                target.to_value = 1000 / min_pace_secs    # Passo più lento (secondi maggiori)
                                         elif 'bpm' in target_str.lower():
                                             # Frequenza cardiaca
                                             target = Target('heart.rate.zone')
+                                            target.from_value = int(parts[0].strip())
+                                            target.to_value = int(parts[1].split('bpm')[0].strip())
                                         else:
                                             # Potenza
                                             target = Target('power.zone')
+                                            target.from_value = int(parts[0].strip())
+                                            target.to_value = int(parts[1].strip())
                                 
                                 # Crea lo step
                                 step = WorkoutStep(
@@ -218,7 +312,7 @@ class ExcelService:
             for sport_type, sport_items in sport_workouts.items():
                 # Crea il dataframe
                 df = pd.DataFrame(
-                    columns=['Nome', 'Sport', 'Tipo', 'Condizione di fine', 'Valore', 'Descrizione', 'Target']
+                    columns=['Nome', 'Sport', 'Data', 'Tipo', 'Condizione di fine', 'Valore', 'Descrizione', 'Target']
                 )
                 
                 # Indice corrente per le righe
@@ -226,10 +320,18 @@ class ExcelService:
                 
                 # Per ogni allenamento in questo sport
                 for name, workout in sport_items:
+                    # Trova la data dell'allenamento se presente
+                    workout_date = None
+                    for step in workout.workout_steps:
+                        if hasattr(step, 'date') and step.date:
+                            workout_date = step.date
+                            break
+                    
                     # Aggiungi la riga dell'allenamento
                     df.loc[row_idx] = {
                         'Nome': name,
                         'Sport': sport_type.capitalize(),
+                        'Data': workout_date,
                         'Tipo': '',
                         'Condizione di fine': '',
                         'Valore': '',
@@ -239,8 +341,9 @@ class ExcelService:
                     
                     row_idx += 1
                     
-                    # Aggiungi gli step
-                    row_idx = ExcelService.add_steps_to_dataframe(df, workout.workout_steps, row_idx)
+                    # Aggiungi gli step (salta lo step con la data)
+                    steps_to_add = [s for s in workout.workout_steps if not (hasattr(s, 'date') and s.date)]
+                    row_idx = ExcelService.add_steps_to_dataframe(df, steps_to_add, row_idx)
                     
                     # Aggiungi una riga vuota tra gli allenamenti
                     row_idx += 1
@@ -273,6 +376,9 @@ class ExcelService:
         """
         row_idx = start_row
         
+        # Ottieni la configurazione per convertire i valori in nomi di zone
+        config = get_config()
+        
         # Per ogni step
         for step in steps:
             # Caso speciale: repeat
@@ -281,6 +387,7 @@ class ExcelService:
                 df.loc[row_idx] = {
                     'Nome': '',
                     'Sport': '',
+                    'Data': '',
                     'Tipo': f"{indent}repeat",
                     'Condizione di fine': 'iterations',
                     'Valore': step.end_condition_value,
@@ -297,6 +404,7 @@ class ExcelService:
                 df.loc[row_idx] = {
                     'Nome': '',
                     'Sport': '',
+                    'Data': '',
                     'Tipo': f"{indent}end_repeat",
                     'Condizione di fine': '',
                     'Valore': '',
@@ -345,7 +453,12 @@ class ExcelService:
                 target_str = ''
                 
                 if step.target and step.target.target != 'no.target':
+                    # Converti valori numerici in nomi di zone
                     if step.target.target == 'pace.zone' and step.target.from_value and step.target.to_value:
+                        # Cerca la zona di passo corrispondente
+                        paces = config.get(f'sports.{step.sport_type if hasattr(step, "sport_type") else "running"}.paces', {})
+                        zone_name = None
+                        
                         # Converti da m/s a min/km
                         min_pace_secs = int(1000 / step.target.from_value)
                         max_pace_secs = int(1000 / step.target.to_value)
@@ -353,19 +466,99 @@ class ExcelService:
                         min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
                         max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
                         
-                        if min_pace == max_pace:
-                            target_str = min_pace
+                        # Cerca la zona corrispondente
+                        for name, pace_range in paces.items():
+                            if '-' in pace_range:
+                                pace_min, pace_max = pace_range.split('-')
+                                if pace_min.strip() == min_pace and pace_max.strip() == max_pace:
+                                    zone_name = name
+                                    break
+                            elif pace_range == min_pace and pace_range == max_pace:
+                                zone_name = name
+                                break
+                        
+                        if zone_name:
+                            target_str = f"@ {zone_name}"
                         else:
-                            target_str = f"{min_pace}-{max_pace}"
+                            if min_pace == max_pace:
+                                target_str = f"{min_pace}"
+                            else:
+                                target_str = f"{min_pace}-{max_pace}"
+                    
                     elif step.target.target == 'heart.rate.zone' and step.target.from_value and step.target.to_value:
-                        target_str = f"{step.target.from_value}-{step.target.to_value} bpm"
+                        # Cerca la zona HR corrispondente
+                        heart_rates = config.get('heart_rates', {})
+                        zone_name = None
+                        
+                        # Valori numerici della zona
+                        from_value = int(step.target.from_value)
+                        to_value = int(step.target.to_value)
+                        
+                        # Cerca la zona corrispondente
+                        for name, hr_range in heart_rates.items():
+                            if name.endswith('_HR'):
+                                # Calcola valori effettivi usando max_hr
+                                max_hr = heart_rates.get('max_hr', 180)
+                                
+                                if '-' in hr_range and 'max_hr' in hr_range:
+                                    # Formato: 62-76% max_hr
+                                    parts = hr_range.split('-')
+                                    min_percent = float(parts[0])
+                                    max_percent = float(parts[1].split('%')[0])
+                                    hr_min = int(min_percent * max_hr / 100)
+                                    hr_max = int(max_percent * max_hr / 100)
+                                    
+                                    if hr_min <= from_value <= hr_max and hr_min <= to_value <= hr_max:
+                                        zone_name = name
+                                        break
+                        
+                        if zone_name:
+                            target_str = f"@ {zone_name}"
+                        else:
+                            target_str = f"{from_value}-{to_value} bpm"
+                    
                     elif step.target.target == 'power.zone' and step.target.from_value and step.target.to_value:
-                        target_str = f"{step.target.from_value}-{step.target.to_value} W"
+                        # Cerca la zona di potenza corrispondente
+                        power_values = config.get('sports.cycling.power_values', {})
+                        zone_name = None
+                        
+                        # Valori numerici della zona
+                        from_value = int(step.target.from_value)
+                        to_value = int(step.target.to_value)
+                        
+                        # Cerca la zona corrispondente
+                        for name, power_range in power_values.items():
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if int(power_min) == from_value and int(power_max) == to_value:
+                                    zone_name = name
+                                    break
+                            elif power_range.startswith('<'):
+                                power_val = int(power_range[1:])
+                                if from_value == 0 and to_value == power_val:
+                                    zone_name = name
+                                    break
+                            elif power_range.endswith('+'):
+                                power_val = int(power_range[:-1])
+                                if from_value == power_val and to_value == 9999:
+                                    zone_name = name
+                                    break
+                            else:
+                                power_val = int(power_range)
+                                if from_value == power_val and to_value == power_val:
+                                    zone_name = name
+                                    break
+                        
+                        if zone_name:
+                            target_str = f"@ {zone_name}"
+                        else:
+                            target_str = f"{from_value}-{to_value} W"
                 
                 # Aggiungi lo step al dataframe
                 df.loc[row_idx] = {
                     'Nome': '',
                     'Sport': '',
+                    'Data': '',
                     'Tipo': f"{indent}{step.step_type}",
                     'Condizione di fine': step.end_condition,
                     'Valore': end_value,

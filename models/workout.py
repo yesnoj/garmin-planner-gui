@@ -2,464 +2,52 @@
 # -*- coding: utf-8 -*-
 
 """
-Modello per gli allenamenti.
+Classi per la gestione degli allenamenti.
 """
 
 import logging
 import re
-from typing import Dict, Any, List, Optional, Union, Tuple
-
-# Tipi di sport supportati
-SPORT_TYPES = {
-    "running": 1,
-    "cycling": 2,
-    "swimming": 4,
-}
-
-# Tipi di step
-STEP_TYPES = {
-    "warmup": 1,
-    "cooldown": 2,
-    "interval": 3,
-    "recovery": 4,
-    "rest": 5,
-    "repeat": 6,
-    "other": 7
-}
-
-# Condizioni di fine
-END_CONDITIONS = {
-    "lap.button": 1,
-    "time": 2,
-    "distance": 3,
-    "iterations": 7,
-}
-
-# Tipi di target
-TARGET_TYPES = {
-    "no.target": 1,
-    "power.zone": 2,
-    "cadence.zone": 3,
-    "heart.rate.zone": 4,
-    "speed.zone": 5,
-    "pace.zone": 6,  # metri al secondo
-}
-
-
-class Workout:
-    """
-    Rappresenta un allenamento.
-    """
-    
-    def __init__(self, sport_type: str, name: str, description: Optional[str] = None):
-        """
-        Inizializza un allenamento.
-        
-        Args:
-            sport_type: Tipo di sport (running, cycling, swimming)
-            name: Nome dell'allenamento
-            description: Descrizione dell'allenamento (opzionale)
-        """
-        self.sport_type = sport_type
-        self.workout_name = name
-        self.description = description
-        self.workout_steps = []
-    
-    def add_step(self, step: 'WorkoutStep') -> None:
-        """
-        Aggiunge uno step all'allenamento.
-        
-        Args:
-            step: Step da aggiungere
-        """
-        if step.order == 0:
-            step.order = len(self.workout_steps) + 1
-        self.workout_steps.append(step)
-    
-    def dist_to_time(self) -> None:
-        """
-        Converte gli step con condizione di fine distanza e target passo in condizione di fine tempo.
-        
-        Questa conversione è utile per gli allenamenti su tapis roulant, dove è difficile stimare il passo.
-        """
-        for ws in self.workout_steps:
-            ws.dist_to_time()
-    
-    def garminconnect_json(self) -> Dict[str, Any]:
-        """
-        Converte l'allenamento in formato JSON per Garmin Connect.
-        
-        Returns:
-            Dizionario con l'allenamento in formato JSON
-        """
-        return {
-            "sportType": {
-                "sportTypeId": SPORT_TYPES[self.sport_type],
-                "sportTypeKey": self.sport_type,
-            },
-            "workoutName": self.workout_name,
-            "description": self.description,
-            "workoutSegments": [
-                {
-                    "segmentOrder": 1,
-                    "sportType": {
-                        "sportTypeId": SPORT_TYPES[self.sport_type],
-                        "sportTypeKey": self.sport_type,
-                    },
-                    "workoutSteps": [step.garminconnect_json() for step in self.workout_steps],
-                }
-            ],
-        }
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Converte l'allenamento in un dizionario per l'importazione/esportazione.
-        
-        Returns:
-            Dizionario con l'allenamento
-        """
-        return {
-            "sport_type": self.sport_type,
-            "name": self.workout_name,
-            "description": self.description,
-            "steps": [step.to_dict() for step in self.workout_steps]
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Workout':
-        """
-        Crea un allenamento da un dizionario.
-        
-        Args:
-            data: Dizionario con i dati dell'allenamento
-            
-        Returns:
-            Istanza di Workout
-        """
-        sport_type = data.get('sport_type', 'running')
-        name = data.get('name', 'Allenamento')
-        description = data.get('description')
-        
-        workout = cls(sport_type, name, description)
-        
-        for step_data in data.get('steps', []):
-            step = WorkoutStep.from_dict(step_data)
-            workout.add_step(step)
-        
-        return workout
-
-
-class WorkoutStep:
-    """
-    Rappresenta uno step di allenamento.
-    """
-    
-    def __init__(
-        self,
-        order: int,
-        step_type: str,
-        description: str = '',
-        end_condition: str = "lap.button",
-        end_condition_value: Optional[Union[str, int]] = None,
-        target: Optional['Target'] = None,
-    ):
-        """
-        Inizializza uno step di allenamento.
-        
-        Args:
-            order: Ordine dello step nell'allenamento
-            step_type: Tipo di step (warmup, cooldown, interval, recovery, rest, repeat, other)
-            description: Descrizione dello step
-            end_condition: Condizione di fine (lap.button, time, distance, iterations)
-            end_condition_value: Valore della condizione di fine
-            target: Target dello step (opzionale)
-        """
-        """Valid end condition values:
-        - distance: '2.0km', '1.125km', '1.6km'
-        - time: 0:40, 4:20
-        - lap.button
-        """
-        self.order = order
-        self.step_type = step_type
-        self.description = description
-        self.end_condition = end_condition
-        self.end_condition_value = end_condition_value
-        self.target = target or Target()
-        self.child_step_id = 1 if self.step_type == 'repeat' else None
-        self.workout_steps = []
-    
-    def add_step(self, step: 'WorkoutStep') -> None:
-        """
-        Aggiunge uno step figlio (per gli step di tipo repeat).
-        
-        Args:
-            step: Step figlio da aggiungere
-        """
-        step.child_step_id = self.child_step_id
-        if step.order == 0:
-            step.order = len(self.workout_steps) + 1
-        self.workout_steps.append(step)
-    
-    def end_condition_unit(self) -> Optional[Dict[str, str]]:
-        """
-        Restituisce l'unità della condizione di fine.
-        
-        Returns:
-            Dizionario con l'unità o None
-        """
-        if self.end_condition and self.end_condition == "distance":
-            if isinstance(self.end_condition_value, str) and self.end_condition_value.endswith("km"):
-                return {"unitKey": "kilometer"}
-            else:
-                return {"unitKey": "meter"}
-        return None
-    
-    def parsed_end_condition_value(self) -> Optional[Union[int, float]]:
-        """
-        Analizza il valore della condizione di fine.
-        
-        Returns:
-            Valore analizzato o None
-        """
-        if self.end_condition == 'distance':
-            # Formato distanza: '2.0km', '1.125km', '1.6km'
-            if isinstance(self.end_condition_value, str):
-                if self.end_condition_value.endswith("km"):
-                    dist_str = self.end_condition_value.replace("km", "")
-                    try:
-                        return int(float(dist_str) * 1000)
-                    except ValueError:
-                        pass
-                elif self.end_condition_value.endswith("m"):
-                    dist_str = self.end_condition_value.replace("m", "")
-                    try:
-                        return int(float(dist_str))
-                    except ValueError:
-                        pass
-            # Già convertito in numero
-            elif isinstance(self.end_condition_value, (int, float)):
-                return int(self.end_condition_value)
-        
-        elif self.end_condition == 'time':
-            # Formato tempo: '0:40', '4:20'
-            if isinstance(self.end_condition_value, str) and ":" in self.end_condition_value:
-                parts = self.end_condition_value.split(":")
-                if len(parts) == 2:
-                    try:
-                        minutes = int(parts[0])
-                        seconds = int(parts[1])
-                        return minutes * 60 + seconds
-                    except ValueError:
-                        pass
-            # Già convertito in numero (secondi)
-            elif isinstance(self.end_condition_value, (int, float)):
-                return int(self.end_condition_value)
-        
-        elif self.end_condition == 'iterations':
-            # Numero di iterazioni per gli step di tipo repeat
-            if isinstance(self.end_condition_value, (int, float)):
-                return int(self.end_condition_value)
-            elif isinstance(self.end_condition_value, str) and self.end_condition_value.isdigit():
-                return int(self.end_condition_value)
-        
-        # Default
-        return self.end_condition_value
-    
-    def dist_to_time(self) -> None:
-        """
-        Converte lo step da condizione di fine distanza a condizione di fine tempo.
-        
-        Utile per gli allenamenti su tapis roulant, dove è difficile stimare il passo.
-        """
-        if self.end_condition == 'distance' and self.target.target == 'pace.zone':
-            # Calcola il passo medio target
-            target_pace_ms = (self.target.from_value + self.target.to_value) / 2
-            if target_pace_ms == 0:
-                return
-            
-            # Calcola il tempo necessario
-            distance_m = self.parsed_end_condition_value()
-            if distance_m is None:
-                return
-            
-            end_condition_sec = int(distance_m / target_pace_ms)
-            
-            # Arrotonda a 10 secondi
-            end_condition_sec = int(round(end_condition_sec / 10) * 10)
-            
-            # Aggiorna lo step
-            self.end_condition = 'time'
-            self.end_condition_value = str(end_condition_sec)
-            
-        elif self.end_condition == 'iterations' and self.workout_steps:
-            # Converti tutti gli step figli
-            for ws in self.workout_steps:
-                ws.dist_to_time()
-    
-    def garminconnect_json(self) -> Dict[str, Any]:
-        """
-        Converte lo step in formato JSON per Garmin Connect.
-        
-        Returns:
-            Dizionario con lo step in formato JSON
-        """
-        base_json = {
-            "type": 'RepeatGroupDTO' if self.step_type == 'repeat' else 'ExecutableStepDTO',
-            "stepId": None,
-            "stepOrder": self.order,
-            "childStepId": self.child_step_id,
-            "stepType": {
-                "stepTypeId": STEP_TYPES[self.step_type],
-                "stepTypeKey": self.step_type,
-            },
-            "endCondition": {
-                "conditionTypeKey": self.end_condition,
-                "conditionTypeId": END_CONDITIONS[self.end_condition],
-            },
-            "endConditionValue": self.parsed_end_condition_value(),
-        }
-        
-        if self.workout_steps:
-            base_json["workoutSteps"] = [step.garminconnect_json() for step in self.workout_steps]
-        
-        if self.step_type == 'repeat':
-            base_json['smartRepeat'] = True
-            base_json['numberOfIterations'] = self.end_condition_value
-        else:
-            base_json.update({
-                "description": self.description,
-                "preferredEndConditionUnit": self.end_condition_unit(),
-                "endConditionCompare": None,
-                "endConditionZone": None,
-                **self.target.garminconnect_json(),
-            })
-        
-        return base_json
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Converte lo step in un dizionario per l'importazione/esportazione.
-        
-        Returns:
-            Dizionario con lo step
-        """
-        result = {
-            "order": self.order,
-            "step_type": self.step_type,
-            "description": self.description,
-            "end_condition": self.end_condition,
-            "end_condition_value": self.end_condition_value,
-        }
-        
-        if self.target and self.target.target != "no.target":
-            result["target"] = self.target.to_dict()
-        
-        if self.workout_steps:
-            result["steps"] = [step.to_dict() for step in self.workout_steps]
-        
-        return result
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'WorkoutStep':
-        """
-        Crea uno step da un dizionario.
-        
-        Args:
-            data: Dizionario con i dati dello step
-            
-        Returns:
-            Istanza di WorkoutStep
-        """
-        order = data.get('order', 0)
-        step_type = data.get('step_type', 'other')
-        description = data.get('description', '')
-        end_condition = data.get('end_condition', 'lap.button')
-        end_condition_value = data.get('end_condition_value')
-        
-        # Crea lo step
-        step = cls(
-            order=order,
-            step_type=step_type,
-            description=description,
-            end_condition=end_condition,
-            end_condition_value=end_condition_value
-        )
-        
-        # Aggiungi il target se presente
-        if 'target' in data:
-            step.target = Target.from_dict(data['target'])
-        
-        # Aggiungi gli step figli se presenti
-        for child_data in data.get('steps', []):
-            child_step = cls.from_dict(child_data)
-            step.add_step(child_step)
-        
-        return step
+from typing import Dict, Any, List, Optional, Union
 
 
 class Target:
-    """
-    Rappresenta un target per uno step.
-    """
+    """Classe per i target degli step."""
     
-    def __init__(
-        self,
-        target: str = "no.target",
-        to_value: Optional[Union[int, float]] = None,
-        from_value: Optional[Union[int, float]] = None,
-        zone: Optional[int] = None
-    ):
+    def __init__(self, target: str = "no.target", to_value: Optional[float] = None, 
+               from_value: Optional[float] = None, zone: Optional[int] = None):
         """
         Inizializza un target.
         
         Args:
-            target: Tipo di target (no.target, power.zone, cadence.zone, heart.rate.zone, speed.zone, pace.zone)
-            to_value: Valore massimo del target
-            from_value: Valore minimo del target
-            zone: Numero di zona
+            target: Tipo di target
+            to_value: Valore massimo
+            from_value: Valore minimo
+            zone: Zona (per target di tipo 'zone')
         """
         self.target = target
         self.to_value = to_value
         self.from_value = from_value
         self.zone = zone
-    
-    def garminconnect_json(self) -> Dict[str, Any]:
-        """
-        Converte il target in formato JSON per Garmin Connect.
-        
-        Returns:
-            Dizionario con il target in formato JSON
-        """
-        return {
-            "targetType": {
-                "workoutTargetTypeId": TARGET_TYPES[self.target],
-                "workoutTargetTypeKey": self.target,
-            },
-            "targetValueOne": self.to_value,
-            "targetValueTwo": self.from_value,
-            "zoneNumber": self.zone,
-        }
+        self.target_zone_name = None  # Nuovo attributo per memorizzare il nome della zona
     
     def to_dict(self) -> Dict[str, Any]:
         """
-        Converte il target in un dizionario per l'importazione/esportazione.
+        Converte il target in un dizionario.
         
         Returns:
-            Dizionario con il target
+            Dizionario con i dati del target
         """
         result = {
-            "target": self.target
+            'target': self.target,
+            'to_value': self.to_value,
+            'from_value': self.from_value,
+            'zone': self.zone
         }
         
-        if self.to_value is not None:
-            result["to_value"] = self.to_value
-        
-        if self.from_value is not None:
-            result["from_value"] = self.from_value
-        
-        if self.zone is not None:
-            result["zone"] = self.zone
-        
+        # Aggiungi target_zone_name se presente
+        if hasattr(self, 'target_zone_name') and self.target_zone_name:
+            result['target_zone_name'] = self.target_zone_name
+            
         return result
     
     @classmethod
@@ -471,267 +59,558 @@ class Target:
             data: Dizionario con i dati del target
             
         Returns:
-            Istanza di Target
+            Target creato
         """
-        target = data.get('target', 'no.target')
-        to_value = data.get('to_value')
-        from_value = data.get('from_value')
-        zone = data.get('zone')
-        
-        return cls(
-            target=target,
-            to_value=to_value,
-            from_value=from_value,
-            zone=zone
+        target = cls(
+            target=data.get('target', 'no.target'),
+            to_value=data.get('to_value'),
+            from_value=data.get('from_value'),
+            zone=data.get('zone')
         )
+        
+        # Ripristina target_zone_name se presente
+        if 'target_zone_name' in data:
+            target.target_zone_name = data['target_zone_name']
+            
+        return target
+    
+    def __repr__(self) -> str:
+        zone_info = f", zone={self.zone}" if self.zone is not None else ""
+        zone_name_info = f", zone_name={self.target_zone_name}" if hasattr(self, 'target_zone_name') and self.target_zone_name else ""
+        return f"Target({self.target}, from={self.from_value}, to={self.to_value}{zone_info}{zone_name_info})"
 
 
-def seconds_to_mmss(seconds: int) -> str:
+class WorkoutStep:
+    """Classe per gli step degli allenamenti."""
+    
+    def __init__(self, order: int, step_type: str, description: str = "", 
+               end_condition: str = "lap.button", end_condition_value: Optional[Union[str, int, float]] = None, 
+               target: Optional[Target] = None, date: Optional[str] = None):
+        """
+        Inizializza uno step.
+        
+        Args:
+            order: Ordine dello step nell'allenamento
+            step_type: Tipo di step (warmup, cooldown, interval, repeat, ...)
+            description: Descrizione dello step
+            end_condition: Condizione di fine (lap.button, time, distance, ...)
+            end_condition_value: Valore della condizione di fine
+            target: Target dello step
+            date: Data dell'allenamento (solo per step speciali)
+        """
+        self.order = order
+        self.step_type = step_type
+        self.description = description
+        self.end_condition = end_condition
+        self.end_condition_value = end_condition_value
+        self.target = target or Target()
+        self.workout_steps = []
+        self.date = date
+        
+        # Attributi specifici del tipo di sport
+        self.sport_type = ""
+    
+    def add_step(self, step: 'WorkoutStep') -> None:
+        """
+        Aggiunge uno step figlio (per repeat).
+        
+        Args:
+            step: Step da aggiungere
+        """
+        # Aggiorna l'ordine
+        step.order = len(self.workout_steps)
+        
+        # Aggiungi lo step
+        self.workout_steps.append(step)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Converte lo step in un dizionario.
+        
+        Returns:
+            Dizionario con i dati dello step
+        """
+        data = {
+            'order': self.order,
+            'type': self.step_type,
+            'description': self.description,
+            'end_condition': self.end_condition,
+            'end_condition_value': self.end_condition_value,
+            'target': self.target.to_dict() if self.target else None
+        }
+        
+        # Aggiungi la data se presente
+        if hasattr(self, 'date') and self.date:
+            data['date'] = self.date
+        
+        # Aggiungi gli step figli se presenti
+        if self.workout_steps:
+            data['workout_steps'] = [step.to_dict() for step in self.workout_steps]
+        
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WorkoutStep':
+        """
+        Crea uno step da un dizionario.
+        
+        Args:
+            data: Dizionario con i dati dello step
+            
+        Returns:
+            Step creato
+        """
+        # Crea lo step
+        step = cls(
+            order=data.get('order', 0),
+            step_type=data.get('type', ''),
+            description=data.get('description', ''),
+            end_condition=data.get('end_condition', 'lap.button'),
+            end_condition_value=data.get('end_condition_value'),
+            date=data.get('date')
+        )
+        
+        # Aggiungi il target se presente
+        if 'target' in data and data['target']:
+            step.target = Target.from_dict(data['target'])
+        
+        # Aggiungi gli step figli se presenti
+        if 'workout_steps' in data and data['workout_steps']:
+            for child_data in data['workout_steps']:
+                child_step = WorkoutStep.from_dict(child_data)
+                step.add_step(child_step)
+        
+        return step
+    
+    def __repr__(self) -> str:
+        return f"WorkoutStep({self.step_type}, {self.end_condition}={self.end_condition_value})"
+
+
+class Workout:
+    """Classe per gli allenamenti."""
+    
+    def __init__(self, sport_type: str, workout_name: str, description: str = ""):
+        """
+        Inizializza un allenamento.
+        
+        Args:
+            sport_type: Tipo di sport (running, cycling, swimming, ...)
+            workout_name: Nome dell'allenamento
+            description: Descrizione dell'allenamento
+        """
+        self.sport_type = sport_type
+        self.workout_name = workout_name
+        self.description = description
+        self.workout_steps = []
+    
+    def add_step(self, step: WorkoutStep) -> None:
+        """
+        Aggiunge uno step all'allenamento.
+        
+        Args:
+            step: Step da aggiungere
+        """
+        # Aggiorna l'ordine se non è un ripetizione (già con ordine e step figli)
+        if not step.workout_steps:
+            step.order = len(self.workout_steps)
+        
+        # Imposta il tipo di sport
+        step.sport_type = self.sport_type
+        
+        # Imposta il tipo di sport anche per gli step figli
+        for child_step in step.workout_steps:
+            child_step.sport_type = self.sport_type
+        
+        # Aggiungi lo step
+        self.workout_steps.append(step)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Converte l'allenamento in un dizionario.
+        
+        Returns:
+            Dizionario con i dati dell'allenamento
+        """
+        return {
+            'sport_type': self.sport_type,
+            'workout_name': self.workout_name,
+            'description': self.description,
+            'workout_steps': [step.to_dict() for step in self.workout_steps]
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Workout':
+        """
+        Crea un allenamento da un dizionario.
+        
+        Args:
+            data: Dizionario con i dati dell'allenamento
+            
+        Returns:
+            Allenamento creato
+        """
+        # Crea l'allenamento
+        workout = cls(
+            sport_type=data.get('sport_type', ''),
+            workout_name=data.get('workout_name', ''),
+            description=data.get('description', '')
+        )
+        
+        # Aggiungi gli step
+        if 'workout_steps' in data and data['workout_steps']:
+            for step_data in data['workout_steps']:
+                step = WorkoutStep.from_dict(step_data)
+                workout.add_step(step)
+        
+        return workout
+    
+    def __repr__(self) -> str:
+        return f"Workout({self.workout_name}, {self.sport_type}, {len(self.workout_steps)} steps)"
+
+
+def create_workout_from_yaml(yaml_data: Dict[str, Any], workout_name: str) -> Workout:
     """
-    Converte un tempo in secondi in formato mm:ss.
+    Crea un allenamento da dati YAML.
     
     Args:
-        seconds: Tempo in secondi
+        yaml_data: Dati YAML
+        workout_name: Nome dell'allenamento
         
     Returns:
-        Tempo in formato mm:ss
-    """
-    mins = seconds // 60
-    secs = seconds % 60
-    return f"{mins:02d}:{secs:02d}"
-
-
-def hhmmss_to_seconds(time_str: str) -> int:
-    """
-    Converte un tempo in formato mm:ss o hh:mm:ss in secondi.
-    
-    Args:
-        time_str: Tempo in formato mm:ss o hh:mm:ss
-        
-    Returns:
-        Tempo in secondi
+        Allenamento creato
         
     Raises:
-        ValueError: Se il formato non è valido
+        ValueError: Se i dati non sono validi
     """
-    parts = time_str.split(':')
-    
-    if len(parts) == 2:
-        # Formato mm:ss
-        try:
-            minutes = int(parts[0])
-            seconds = int(parts[1])
-            return minutes * 60 + seconds
-        except ValueError:
-            raise ValueError(f"Formato non valido per mm:ss: {time_str}")
-            
-    elif len(parts) == 3:
-        # Formato hh:mm:ss
-        try:
-            hours = int(parts[0])
-            minutes = int(parts[1])
-            seconds = int(parts[2])
-            return hours * 3600 + minutes * 60 + seconds
-        except ValueError:
-            raise ValueError(f"Formato non valido per hh:mm:ss: {time_str}")
-            
-    else:
-        raise ValueError(f"Formato non valido per il tempo: {time_str}")
-
-
-def parse_yaml_workout(workout_data: Dict[str, Any], name: str) -> Workout:
-    """
-    Analizza un allenamento dal formato YAML importato.
-    
-    Args:
-        workout_data: Dati dell'allenamento dal YAML
-        name: Nome dell'allenamento
+    try:
+        # Ottieni i dati dell'allenamento
+        workout_data = yaml_data.get(workout_name)
         
-    Returns:
-        Istanza di Workout
-    """
-    # Estrai il tipo di sport
-    sport_type = 'running'  # Default
-    
-    # Cerca metadati
-    meta_steps = []
-    regular_steps = []
-    
-    for step in workout_data:
-        if isinstance(step, dict):
+        if not workout_data or not isinstance(workout_data, list):
+            raise ValueError(f"Dati non validi per l'allenamento '{workout_name}'")
+        
+        # Tipo di sport
+        sport_type = "running"  # Default
+        
+        # Trova lo step sport_type
+        for step in workout_data:
             if 'sport_type' in step:
-                sport_type = step['sport_type']
-                meta_steps.append(step)
-            elif 'date' in step:
-                meta_steps.append(step)
-            else:
-                regular_steps.append(step)
-    
-    # Crea l'allenamento
-    workout = Workout(sport_type, name)
-    
-    # Aggiungi gli step
-    for step in regular_steps:
-        workout_step = parse_step(step)
-        if workout_step:
-            workout.add_step(workout_step)
-    
-    return workout
+                sport_type = step.get('sport_type', 'running')
+                break
+        
+        # Crea l'allenamento
+        workout = Workout(sport_type, workout_name)
+        
+        # Processa gli step
+        for item in workout_data:
+            # Skip sport_type (già processato)
+            if 'sport_type' in item:
+                continue
+            
+            # Cerca attributi speciali
+            if 'date' in item:
+                # Crea uno step speciale con la data
+                date_step = WorkoutStep(0, "warmup")
+                date_step.date = item['date']
+                workout.add_step(date_step)
+                continue
+            
+            # Processa gli step normali
+            for step_type, value in item.items():
+                if step_type == 'repeat':
+                    # Crea un gruppo di ripetizioni
+                    repeat_step = WorkoutStep(
+                        order=0,
+                        step_type='repeat',
+                        end_condition='iterations',
+                        end_condition_value=value
+                    )
+                    
+                    # Aggiungi gli step figli
+                    steps = item.get('steps', [])
+                    for child_item in steps:
+                        for child_type, child_value in child_item.items():
+                            if child_type in ['warmup', 'cooldown', 'interval', 'recovery', 'rest', 'other']:
+                                # Crea lo step figlio
+                                child_step = parse_step(child_type, child_value)
+                                child_step.sport_type = sport_type
+                                repeat_step.add_step(child_step)
+                    
+                    # Aggiungi il gruppo all'allenamento
+                    workout.add_step(repeat_step)
+                
+                elif step_type in ['warmup', 'cooldown', 'interval', 'recovery', 'rest', 'other']:
+                    # Crea lo step
+                    step = parse_step(step_type, value)
+                    step.sport_type = sport_type
+                    workout.add_step(step)
+        
+        return workout
+        
+    except Exception as e:
+        logging.error(f"Errore nella creazione dell'allenamento da YAML: {str(e)}")
+        raise ValueError(f"Errore nella creazione dell'allenamento da YAML: {str(e)}")
 
 
-def parse_step(step_data: Dict[str, Any]) -> Optional[WorkoutStep]:
+def parse_step(step_type: str, value: str) -> WorkoutStep:
     """
-    Analizza uno step dal formato YAML importato.
+    Analizza un valore di step dal YAML.
     
     Args:
-        step_data: Dati dello step dal YAML
+        step_type: Tipo di step
+        value: Valore dello step
         
     Returns:
-        Istanza di WorkoutStep o None
+        Step creato
+        
+    Raises:
+        ValueError: Se il valore non è valido
     """
-    if not isinstance(step_data, dict):
-        return None
+    # Valori di default
+    end_condition = "lap.button"
+    end_condition_value = None
+    target_type = "no.target"
+    target_from = None
+    target_to = None
+    description = ""
     
-    # Caso particolare: step di tipo repeat
-    if 'repeat' in step_data and 'steps' in step_data:
-        repeat_count = step_data['repeat']
-        substeps = step_data['steps']
+    # Estrai la descrizione se presente
+    if ' -- ' in value:
+        value, description = value.split(' -- ', 1)
+    
+    # Estrai il target se presente
+    if ' @ ' in value:
+        value, target = value.split(' @ ', 1)
         
-        repeat_step = WorkoutStep(
-            order=0,
-            step_type='repeat',
-            end_condition='iterations',
-            end_condition_value=repeat_count
-        )
-        
-        for substep in substeps:
-            sub = parse_step(substep)
-            if sub:
-                repeat_step.add_step(sub)
-        
-        return repeat_step
-    
-    # Step normale
-    if len(step_data) != 1:
-        return None
-    
-    step_type = list(step_data.keys())[0]
-    step_value = step_data[step_type]
-    
-    # Estrai descrizione
-    description = ''
-    if ' -- ' in step_value:
-        parts = step_value.split(' -- ', 1)
-        step_value = parts[0]
-        description = parts[1]
-    
-    # Estrai target
-    target = None
-    for target_type in [' @ ', ' @spd ', ' @hr ', ' @pwr ']:
-        if target_type in step_value:
-            parts = step_value.split(target_type, 1)
-            step_value = parts[0]
-            target_value = parts[1]
+        # Determina il tipo di target
+        if target.startswith('Z') and '_HR' in target:
+            # Zona di frequenza cardiaca (Z1_HR, Z2_HR, ecc.)
+            target_type = "heart.rate.zone"
             
-            if target_type == ' @ ':
-                target = Target(target='pace.zone')  # Valori da impostare successivamente
-            elif target_type == ' @spd ':
-                target = Target(target='speed.zone')
-            elif target_type == ' @hr ':
-                target = Target(target='heart.rate.zone')
-            elif target_type == ' @pwr ':
-                target = Target(target='power.zone')
+            # Ottieni i valori HR dalla configurazione
+            app_config = get_config()
+            heart_rates = app_config.get('heart_rates', {})
+            max_hr = heart_rates.get('max_hr', 180)
             
-            break
-    
-    # Estrai condizione di fine e valore
-    end_condition = 'lap.button'
-    end_value = None
-    
-    # Formati possibili:
-    # - 5min, 10s, 30min (tempo)
-    # - 1000m, 5km (distanza)
-    # - 5 (numero di ripetizioni)
-    # - lap-button (pulsante lap)
-    
-    step_value = step_value.strip()
-    
-    if step_value == 'lap-button':
-        end_condition = 'lap.button'
-    elif re.match(r'^\d+$', step_value):
-        end_condition = 'iterations'
-        end_value = int(step_value)
-    elif re.match(r'^\d+[ms]$', step_value) or re.match(r'^\d+min$', step_value):
-        end_condition = 'time'
+            # Cerca la zona corrispondente
+            if target in heart_rates:
+                hr_range = heart_rates[target]
+                
+                if '-' in hr_range and 'max_hr' in hr_range:
+                    # Formato: 62-76% max_hr
+                    parts = hr_range.split('-')
+                    min_percent = float(parts[0])
+                    max_percent = float(parts[1].split('%')[0])
+                    
+                    # Converti in valori assoluti
+                    target_from = int(min_percent * max_hr / 100)
+                    target_to = int(max_percent * max_hr / 100)
+            else:
+                # Default se la zona non è trovata
+                target_from = 120
+                target_to = 140
         
-        if step_value.endswith('s'):
-            end_value = step_value[:-1]  # Secondi
-        elif step_value.endswith('m'):
-            end_value = str(int(step_value[:-1]) * 60)  # Minuti in secondi
-        elif step_value.endswith('min'):
-            end_value = str(int(step_value[:-3]) * 60)  # Minuti in secondi
-    elif re.match(r'^\d+:\d{2}$', step_value):
-        end_condition = 'time'
+        elif target.startswith('Z') or target in ['recovery', 'threshold', 'marathon', 'race_pace']:
+            # Zona di passo (Z1, Z2, recovery, threshold, ecc.)
+            target_type = "pace.zone"
+            
+            # Ottieni i valori del passo dalla configurazione
+            app_config = get_config()
+            paces = app_config.get('paces', {})
+            
+            # Cerca la zona corrispondente
+            if target in paces:
+                pace_range = paces[target]
+                
+                if '-' in pace_range:
+                    # Formato: min:sec-min:sec
+                    min_pace, max_pace = pace_range.split('-')
+                    min_pace = min_pace.strip()
+                    max_pace = max_pace.strip()
+                else:
+                    # Formato: min:sec (valore singolo)
+                    min_pace = max_pace = pace_range.strip()
+                
+                # Converti da min:sec a secondi
+                def pace_to_seconds(pace_str):
+                    parts = pace_str.split(':')
+                    return int(parts[0]) * 60 + int(parts[1])
+                
+                min_pace_secs = pace_to_seconds(min_pace)
+                max_pace_secs = pace_to_seconds(max_pace)
+                
+                # Converti da secondi a m/s (inverti min e max)
+                target_from = 1000 / max_pace_secs  # Passo più veloce
+                target_to = 1000 / min_pace_secs    # Passo più lento
+            else:
+                # Default se la zona non è trovata
+                target_from = 3.0  # ~5:30 min/km
+                target_to = 2.5    # ~6:40 min/km
+        
+        elif target in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'recovery', 'threshold', 'sweet_spot']:
+            # Zona di potenza (per ciclismo)
+            target_type = "power.zone"
+            
+            # Ottieni i valori di potenza dalla configurazione
+            app_config = get_config()
+            power_values = app_config.get('power_values', {})
+            
+            # Cerca la zona corrispondente
+            if target in power_values:
+                power_range = power_values[target]
+                
+                if isinstance(power_range, str):
+                    if '-' in power_range:
+                        # Formato: N-N
+                        min_power, max_power = power_range.split('-')
+                        target_from = int(min_power.strip())
+                        target_to = int(max_power.strip())
+                    elif power_range.startswith('<'):
+                        # Formato: <N
+                        power_val = int(power_range[1:].strip())
+                        target_from = 0
+                        target_to = power_val
+                    elif power_range.endswith('+'):
+                        # Formato: N+
+                        power_val = int(power_range[:-1].strip())
+                        target_from = power_val
+                        target_to = 9999  # Valore alto per "infinito"
+                    else:
+                        # Valore singolo
+                        power_val = int(power_range.strip())
+                        target_from = power_val
+                        target_to = power_val
+                else:
+                    # Valore numerico
+                    target_from = power_values[target]
+                    target_to = power_values[target]
+            else:
+                # Default se la zona non è trovata
+                target_from = 200
+                target_to = 250
+                
+        elif '@hr' in target:
+            # Frequenza cardiaca
+            target_type = "heart.rate.zone"
+            target = target.replace('@hr', '').strip()
+            
+            # Estrai i valori se è un intervallo
+            if '-' in target:
+                min_hr, max_hr = target.split('-')
+                target_from = int(min_hr.strip())
+                target_to = int(max_hr.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+            else:
+                # Valore singolo
+                hr_val = int(target.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+                target_from = hr_val
+                target_to = hr_val
+                
+        elif '@pwr' in target:
+            # Potenza
+            target_type = "power.zone"
+            target = target.replace('@pwr', '').strip()
+            
+            # Estrai i valori se è un intervallo
+            if '-' in target:
+                min_power, max_power = target.split('-')
+                target_from = int(min_power.strip())
+                target_to = int(max_power.strip().split(' ')[0])  # Rimuovi "W" se presente
+            else:
+                # Valore singolo
+                power_val = int(target.strip().split(' ')[0])  # Rimuovi "W" se presente
+                target_from = power_val
+                target_to = power_val
+        
+        else:
+            # Cerca di interpretare il target come un passo o un valore numerico
+            target_type = "pace.zone"
+            
+            # Verifica se il formato è min:sec-min:sec
+            if '-' in target and ':' in target:
+                min_pace, max_pace = target.split('-')
+                
+                # Converti da min:sec a secondi
+                def parse_pace(pace_str):
+                    parts = pace_str.strip().split(':')
+                    return int(parts[0]) * 60 + int(parts[1])
+                
+                try:
+                    min_pace_secs = parse_pace(min_pace)
+                    max_pace_secs = parse_pace(max_pace)
+                    
+                    # Converti da secondi a m/s (inverti min e max)
+                    target_from = 1000 / max_pace_secs  # Passo più veloce
+                    target_to = 1000 / min_pace_secs    # Passo più lento
+                except (ValueError, IndexError):
+                    # Default se non riesce a interpretare
+                    target_from = 3.0  # ~5:30 min/km
+                    target_to = 2.5    # ~6:40 min/km
+            else:
+                # Default se non è un formato riconoscibile
+                target_from = 3.0
+                target_to = 2.5
+    
+    # Analizza la condizione di fine
+    if value == "lap-button":
+        end_condition = "lap.button"
+    elif value.endswith('min'):
+        # Formato: Nmin o N:SSmin
+        end_condition = "time"
+        
+        if ':' in value:
+            # Formato: N:SSmin
+            time_value = value[:-3]  # Rimuovi "min"
+            try:
+                minutes, seconds = time_value.split(':')
+                end_condition_value = int(minutes) * 60 + int(seconds)  # Converti in secondi
+            except (ValueError, IndexError):
+                end_condition_value = 60  # Default: 1 minuto
+        else:
+            # Formato: Nmin
+            try:
+                minutes = int(value[:-3])
+                end_condition_value = minutes * 60  # Secondi
+            except ValueError:
+                end_condition_value = 60  # Default: 1 minuto
+    elif value.endswith('s'):
+        # Formato: Ns
+        end_condition = "time"
         try:
-            minutes, seconds = map(int, step_value.split(':'))
-            end_value = str(minutes * 60 + seconds)  # mm:ss in secondi
+            end_condition_value = int(value[:-1])  # Secondi
         except ValueError:
-            pass
-    elif re.match(r'^\d+(?:\.\d+)?(?:m|km)$', step_value):
-        end_condition = 'distance'
-        end_value = step_value
+            end_condition_value = 30  # Default: 30 secondi
+    elif value.endswith('km'):
+        # Formato: N.Nkm
+        end_condition = "distance"
+        try:
+            end_condition_value = float(value[:-2]) * 1000  # Metri
+        except ValueError:
+            end_condition_value = 1000  # Default: 1 km
+    elif value.endswith('m'):
+        # Formato: Nm
+        end_condition = "distance"
+        try:
+            end_condition_value = int(value[:-1])  # Metri
+        except ValueError:
+            end_condition_value = 100  # Default: 100 m
     
-    return WorkoutStep(
+    # Crea il target
+    target = Target(target_type, target_to, target_from)
+    # Aggiungi il nome della zona se riconosciuto
+    if ' @ ' in value:
+        _, zone_name = value.split(' @ ', 1)
+        if zone_name in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z1_HR', 'Z2_HR', 'Z3_HR', 'Z4_HR', 'Z5_HR', 
+                         'recovery', 'threshold', 'marathon', 'race_pace', 'sweet_spot', 'sprint']:
+            target.target_zone_name = zone_name
+    
+    # Crea lo step
+    step = WorkoutStep(
         order=0,
         step_type=step_type,
         description=description,
         end_condition=end_condition,
-        end_condition_value=end_value,
+        end_condition_value=end_condition_value,
         target=target
     )
-
-
-def create_workout_from_yaml(yaml_data: Dict[str, List[Dict[str, Any]]], name: str) -> Workout:
-    """
-    Crea un allenamento dal formato YAML.
     
-    Args:
-        yaml_data: Dati dell'allenamento dal YAML
-        name: Nome dell'allenamento
-        
-    Returns:
-        Istanza di Workout
-    """
-    # Estrai gli step
-    steps = yaml_data.get(name, [])
-    
-    return parse_yaml_workout(steps, name)
-
-
-if __name__ == "__main__":
-    # Test
-    workout = Workout("running", "Test Workout", "Test description")
-    
-    # Aggiungi warmup
-    warmup = WorkoutStep(1, "warmup", "Riscaldamento", "time", "10:00")
-    workout.add_step(warmup)
-    
-    # Aggiungi un gruppo di ripetizioni
-    repeat = WorkoutStep(2, "repeat", "Ripetizioni", "iterations", 5)
-    
-    # Aggiungi gli step all'interno del gruppo
-    interval = WorkoutStep(1, "interval", "Intervallo", "distance", "400m", Target("pace.zone", 3.5, 3.3))
-    repeat.add_step(interval)
-    
-    recovery = WorkoutStep(2, "recovery", "Recupero", "time", "1:00")
-    repeat.add_step(recovery)
-    
-    workout.add_step(repeat)
-    
-    # Aggiungi cooldown
-    cooldown = WorkoutStep(3, "cooldown", "Defaticamento", "time", "5:00")
-    workout.add_step(cooldown)
-    
-    # Stampa il JSON per Garmin Connect
-    import json
-    print(json.dumps(workout.garminconnect_json(), indent=2))
+    return step
