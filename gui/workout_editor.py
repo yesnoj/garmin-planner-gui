@@ -117,7 +117,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Crea il treeview
         columns = ("name", "sport", "steps")
         self.workout_tree = ttk.Treeview(list_frame, columns=columns, show="headings", 
-                                      selectmode="browse")
+                                      selectmode="extended")
         
         # Intestazioni
         self.workout_tree.heading("name", text="Nome")
@@ -155,6 +155,15 @@ class WorkoutEditorFrame(ttk.Frame):
         self.refresh_button = ttk.Button(buttons_frame, text="Aggiorna", 
                                       command=self.refresh_workouts)
         self.refresh_button.pack(side=tk.RIGHT)
+        
+        export_frame = ttk.Frame(buttons_frame)
+        export_frame.pack(side=tk.LEFT, padx=(20, 0))
+
+        ttk.Button(export_frame, text="Esporta YAML", 
+                 command=self.export_selected_yaml).pack(side=tk.LEFT, padx=(0, 5))
+                 
+        ttk.Button(export_frame, text="Esporta Excel", 
+                 command=self.export_selected_excel).pack(side=tk.LEFT)
         
         # --- Parte destra: Editor dell'allenamento ---
         
@@ -902,6 +911,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Aggiorna la lista degli step
         self.update_steps_list()
     
+
     def save_workout(self):
         """Salva le modifiche all'allenamento corrente."""
         # Verifica che ci sia un allenamento corrente
@@ -913,40 +923,232 @@ class WorkoutEditorFrame(ttk.Frame):
         self.current_workout.sport_type = self.sport_var.get()
         self.current_workout.description = self.description_var.get()
         
-        # Verifica che ci sia un client Garmin
-        if not self.garmin_client:
-            show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
-            return
+        # Determina la fonte degli allenamenti
+        source = self.source_var.get()
         
-        try:
-            # Aggiorna o crea l'allenamento su Garmin Connect
-            if self.current_workout_id:
-                # Aggiorna l'allenamento esistente
-                response = self.garmin_client.update_workout(self.current_workout_id, self.current_workout)
-            else:
-                # Crea un nuovo allenamento
-                response = self.garmin_client.add_workout(self.current_workout)
+        if source == "garmin":
+            # Verifica che ci sia un client Garmin
+            if not self.garmin_client:
+                show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
+                return
+            
+            try:
+                # Aggiorna o crea l'allenamento su Garmin Connect
+                if self.current_workout_id:
+                    # Aggiorna l'allenamento esistente
+                    response = self.garmin_client.update_workout(self.current_workout_id, self.current_workout)
+                else:
+                    # Crea un nuovo allenamento
+                    response = self.garmin_client.add_workout(self.current_workout)
+                    
+                    # Ottieni l'ID del nuovo allenamento
+                    if response and 'workoutId' in response:
+                        self.current_workout_id = str(response['workoutId'])
                 
-                # Ottieni l'ID del nuovo allenamento
-                if response and 'workoutId' in response:
-                    self.current_workout_id = str(response['workoutId'])
+                # Resetta il flag di modifica
+                self.current_workout_modified = False
+                
+                # Aggiorna la lista degli allenamenti
+                self.refresh_workouts()
+                
+                # Mostra messaggio di conferma
+                show_info("Allenamento salvato", 
+                       f"L'allenamento '{self.current_workout.workout_name}' è stato salvato su Garmin Connect", 
+                       parent=self)
+                
+            except Exception as e:
+                logging.error(f"Errore nel salvataggio dell'allenamento: {str(e)}")
+                show_error("Errore", 
+                         f"Impossibile salvare l'allenamento: {str(e)}", 
+                         parent=self)
+        else:
+            # Salva nella lista degli importati
+            import_export_frame = self.controller.import_export
+            if not hasattr(import_export_frame, 'imported_workouts'):
+                import_export_frame.imported_workouts = []
+            
+            # Cerca se l'allenamento è già presente
+            found = False
+            if self.current_workout_id and self.current_workout_id.startswith("imported_"):
+                index = int(self.current_workout_id.split("_")[1])
+                if index < len(import_export_frame.imported_workouts):
+                    # Aggiorna l'allenamento esistente
+                    import_export_frame.imported_workouts[index] = (self.current_workout.workout_name, self.current_workout)
+                    found = True
+            
+            if not found:
+                # Aggiungi un nuovo allenamento
+                import_export_frame.imported_workouts.append((self.current_workout.workout_name, self.current_workout))
+                # Assegna un ID importato
+                self.current_workout_id = f"imported_{len(import_export_frame.imported_workouts) - 1}"
             
             # Resetta il flag di modifica
             self.current_workout_modified = False
             
             # Aggiorna la lista degli allenamenti
-            self.refresh_workouts()
+            self.load_imported_workouts()
+            self.update_workout_list()
             
             # Mostra messaggio di conferma
             show_info("Allenamento salvato", 
-                   f"L'allenamento '{self.current_workout.workout_name}' è stato salvato su Garmin Connect", 
+                   f"L'allenamento '{self.current_workout.workout_name}' è stato salvato nella lista degli importati", 
+                   parent=self)
+
+    def export_selected_yaml(self):
+        """Esporta gli allenamenti selezionati in formato YAML."""
+        # Verifica che siano selezionati degli allenamenti
+        selection = self.workout_tree.selection()
+        if not selection:
+            show_error("Errore", "Seleziona almeno un allenamento da esportare", parent=self)
+            return
+        
+        # Raccogli gli allenamenti selezionati
+        selected_workouts = []
+        source = self.source_var.get()
+        
+        for item in selection:
+            workout_id = self.workout_tree.item(item, "tags")[0]
+            if source == "garmin":
+                # Cerca l'allenamento nella lista di Garmin
+                for id, workout_data in self.workouts:
+                    if id == workout_id:
+                        try:
+                            # Importa l'allenamento
+                            from services.garmin_service import GarminService
+                            service = GarminService(self.garmin_client)
+                            workout = service.import_workout(workout_data)
+                            if workout:
+                                selected_workouts.append((workout.workout_name, workout))
+                        except Exception as e:
+                            logging.error(f"Errore nell'importazione dell'allenamento {workout_id}: {str(e)}")
+                        break
+            else:
+                # Cerca l'allenamento nella lista degli importati
+                if workout_id.startswith("imported_"):
+                    index = int(workout_id.split("_")[1])
+                    if hasattr(self.controller.import_export, 'imported_workouts'):
+                        imported_workouts = self.controller.import_export.imported_workouts
+                        if index < len(imported_workouts):
+                            selected_workouts.append(imported_workouts[index])
+        
+        if not selected_workouts:
+            show_error("Errore", "Impossibile trovare gli allenamenti selezionati", parent=self)
+            return
+        
+        # Chiedi il file da esportare
+        file_path = filedialog.asksaveasfilename(
+            title="Esporta allenamenti in YAML",
+            filetypes=[("YAML files", "*.yaml"), ("All files", "*.*")],
+            defaultextension=".yaml",
+            initialdir=self.config.get('paths.last_export_dir', '')
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Salva il percorso
+            self.config.set('paths.last_export_dir', os.path.dirname(file_path))
+            self.config.save()
+            
+            # Crea un dizionario di configurazione
+            config = {
+                'name_prefix': self.config.get('planning.name_prefix', '')
+            }
+            
+            # Esporta gli allenamenti
+            from services.yaml_service import YamlService
+            YamlService.export_workouts(selected_workouts, file_path, config)
+            
+            # Mostra messaggio di conferma
+            show_info("Esportazione completata", 
+                   f"Esportati {len(selected_workouts)} allenamenti in YAML", 
                    parent=self)
             
+            # Aggiorna la barra di stato
+            self.controller.set_status(f"Esportati {len(selected_workouts)} allenamenti in {file_path}")
+            
         except Exception as e:
-            logging.error(f"Errore nel salvataggio dell'allenamento: {str(e)}")
+            logging.error(f"Errore nell'esportazione in YAML: {str(e)}")
             show_error("Errore", 
-                     f"Impossibile salvare l'allenamento: {str(e)}", 
+                     f"Impossibile esportare in YAML: {str(e)}", 
                      parent=self)
+
+    def export_selected_excel(self):
+        """Esporta gli allenamenti selezionati in formato Excel."""
+        # Verifica che siano selezionati degli allenamenti
+        selection = self.workout_tree.selection()
+        if not selection:
+            show_error("Errore", "Seleziona almeno un allenamento da esportare", parent=self)
+            return
+        
+        # Raccogli gli allenamenti selezionati
+        selected_workouts = []
+        source = self.source_var.get()
+        
+        for item in selection:
+            workout_id = self.workout_tree.item(item, "tags")[0]
+            if source == "garmin":
+                # Cerca l'allenamento nella lista di Garmin
+                for id, workout_data in self.workouts:
+                    if id == workout_id:
+                        try:
+                            # Importa l'allenamento
+                            from services.garmin_service import GarminService
+                            service = GarminService(self.garmin_client)
+                            workout = service.import_workout(workout_data)
+                            if workout:
+                                selected_workouts.append((workout.workout_name, workout))
+                        except Exception as e:
+                            logging.error(f"Errore nell'importazione dell'allenamento {workout_id}: {str(e)}")
+                        break
+            else:
+                # Cerca l'allenamento nella lista degli importati
+                if workout_id.startswith("imported_"):
+                    index = int(workout_id.split("_")[1])
+                    if hasattr(self.controller.import_export, 'imported_workouts'):
+                        imported_workouts = self.controller.import_export.imported_workouts
+                        if index < len(imported_workouts):
+                            selected_workouts.append(imported_workouts[index])
+        
+        if not selected_workouts:
+            show_error("Errore", "Impossibile trovare gli allenamenti selezionati", parent=self)
+            return
+        
+        # Chiedi il file da esportare
+        file_path = filedialog.asksaveasfilename(
+            title="Esporta allenamenti in Excel",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            defaultextension=".xlsx",
+            initialdir=self.config.get('paths.last_export_dir', '')
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Salva il percorso
+            self.config.set('paths.last_export_dir', os.path.dirname(file_path))
+            self.config.save()
+            
+            # Esporta gli allenamenti
+            from services.excel_service import ExcelService
+            ExcelService.export_workouts(selected_workouts, file_path)
+            
+            # Mostra messaggio di conferma
+            show_info("Esportazione completata", 
+                   f"Esportati {len(selected_workouts)} allenamenti in Excel", 
+                   parent=self)
+            
+            # Aggiorna la barra di stato
+            self.controller.set_status(f"Esportati {len(selected_workouts)} allenamenti in {file_path}")
+            
+        except Exception as e:
+            logging.error(f"Errore nell'esportazione in Excel: {str(e)}")
+            show_error("Errore", 
+                     f"Impossibile esportare in Excel: {str(e)}", 
+                     parent=self)
+
     
     def send_to_garmin(self):
         """Invia l'allenamento corrente a Garmin Connect."""
@@ -1040,68 +1242,109 @@ class WorkoutEditorFrame(ttk.Frame):
             # È un nuovo allenamento, crea uno vuoto
             self.new_workout()
     
+
     def delete_workout(self):
-        """Elimina l'allenamento selezionato da Garmin Connect."""
-        # Verifica che sia selezionato un allenamento
+        """Elimina gli allenamenti selezionati."""
+        # Verifica che siano selezionati degli allenamenti
         selection = self.workout_tree.selection()
         if not selection:
             return
         
-        # Ottieni l'ID dell'allenamento
-        item = selection[0]
-        workout_id = self.workout_tree.item(item, "tags")[0]
-        
-        # Ottieni il nome dell'allenamento
-        values = self.workout_tree.item(item, "values")
-        name = values[0]
+        # Ottieni la fonte degli allenamenti
+        source = self.source_var.get()
         
         # Chiedi conferma
         if not ask_yes_no("Conferma eliminazione", 
-                       f"Sei sicuro di voler eliminare l'allenamento '{name}'?", 
+                       f"Sei sicuro di voler eliminare {len(selection)} allenamenti?", 
                        parent=self):
             return
         
-        # Verifica che ci sia un client Garmin
-        if not self.garmin_client:
-            show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
-            return
-        
-        try:
-            # Elimina l'allenamento
-            self.garmin_client.delete_workout(workout_id)
+        if source == "garmin":
+            # Elimina gli allenamenti da Garmin Connect
+            if not self.garmin_client:
+                show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
+                return
             
-            # Se è l'allenamento corrente, resettalo
-            if self.current_workout_id == workout_id:
-                self.current_workout = None
-                self.current_workout_id = None
-                self.current_workout_modified = False
-                
-                # Pulisci i campi
-                self.name_var.set("")
-                self.sport_var.set("running")
-                self.description_var.set("")
-                
-                # Aggiorna la lista degli step
-                self.update_steps_list()
-                
-                # Disabilita i pulsanti
-                self.save_button.config(state="disabled")
-                self.send_button.config(state="disabled")
-                self.discard_button.config(state="disabled")
+            for item in selection:
+                try:
+                    # Ottieni l'ID dell'allenamento
+                    workout_id = self.workout_tree.item(item, "tags")[0]
+                    
+                    # Elimina l'allenamento
+                    self.garmin_client.delete_workout(workout_id)
+                    
+                    # Se è l'allenamento corrente, resettalo
+                    if self.current_workout_id == workout_id:
+                        self.current_workout = None
+                        self.current_workout_id = None
+                        self.current_workout_modified = False
+                        
+                        # Pulisci i campi
+                        self.name_var.set("")
+                        self.sport_var.set("running")
+                        self.description_var.set("")
+                        
+                        # Aggiorna la lista degli step
+                        self.update_steps_list()
+                        
+                        # Disabilita i pulsanti
+                        self.save_button.config(state="disabled")
+                        self.send_button.config(state="disabled")
+                        self.discard_button.config(state="disabled")
+                except Exception as e:
+                    logging.error(f"Errore nell'eliminazione dell'allenamento {workout_id}: {str(e)}")
             
             # Aggiorna la lista degli allenamenti
             self.refresh_workouts()
+        else:
+            # Elimina gli allenamenti dalla lista degli importati
+            import_export_frame = self.controller.import_export
+            if not hasattr(import_export_frame, 'imported_workouts'):
+                return
             
-            # Mostra messaggio di conferma
-            show_info("Allenamento eliminato", 
-                   f"L'allenamento '{name}' è stato eliminato da Garmin Connect", 
-                   parent=self)
+            # Ottieni gli indici degli allenamenti da eliminare
+            indices_to_delete = []
+            for item in selection:
+                workout_id = self.workout_tree.item(item, "tags")[0]
+                if workout_id.startswith("imported_"):
+                    index = int(workout_id.split("_")[1])
+                    indices_to_delete.append(index)
             
-        except Exception as e:
-            logging.error(f"Errore nell'eliminazione dell'allenamento: {str(e)}")
-            show_error("Errore", 
-                     f"Impossibile eliminare l'allenamento: {str(e)}", 
-                     parent=self)
+            # Ordina gli indici in ordine decrescente per evitare problemi durante l'eliminazione
+            indices_to_delete.sort(reverse=True)
+            
+            # Elimina gli allenamenti
+            for index in indices_to_delete:
+                if index < len(import_export_frame.imported_workouts):
+                    del import_export_frame.imported_workouts[index]
+                    
+                    # Se è l'allenamento corrente, resettalo
+                    if self.current_workout_id == f"imported_{index}":
+                        self.current_workout = None
+                        self.current_workout_id = None
+                        self.current_workout_modified = False
+                        
+                        # Pulisci i campi
+                        self.name_var.set("")
+                        self.sport_var.set("running")
+                        self.description_var.set("")
+                        
+                        # Aggiorna la lista degli step
+                        self.update_steps_list()
+                        
+                        # Disabilita i pulsanti
+                        self.save_button.config(state="disabled")
+                        self.send_button.config(state="disabled")
+                        self.discard_button.config(state="disabled")
+            
+            # Aggiorna la lista importata
+            self.load_imported_workouts()
+            self.update_workout_list()
+        
+        # Mostra messaggio di conferma
+        show_info("Allenamenti eliminati", 
+               f"{len(selection)} allenamenti sono stati eliminati", 
+               parent=self)
     
     def schedule_workouts_dialog(self):
         """Mostra il dialog per la pianificazione degli allenamenti."""
