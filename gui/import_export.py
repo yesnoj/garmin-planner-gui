@@ -491,6 +491,10 @@ class ImportExportFrame(ttk.Frame):
             # Aggiorna la barra di stato
             self.controller.set_status(f"Importati {len(imported)} allenamenti da {file_path}")
             
+            # Notifica il WorkoutEditorFrame
+            if hasattr(self.controller, 'workout_editor'):
+                self.controller.workout_editor.on_workouts_imported()
+            
         except Exception as e:
             logging.error(f"Errore nell'importazione del file YAML: {str(e)}")
             show_error("Errore", 
@@ -533,6 +537,10 @@ class ImportExportFrame(ttk.Frame):
             
             # Aggiorna la barra di stato
             self.controller.set_status(f"Importati {len(imported)} allenamenti da {file_path}")
+            
+            # Notifica il WorkoutEditorFrame
+            if hasattr(self.controller, 'workout_editor'):
+                self.controller.workout_editor.on_workouts_imported()
             
         except Exception as e:
             logging.error(f"Errore nell'importazione del file Excel: {str(e)}")

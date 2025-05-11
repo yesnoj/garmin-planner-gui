@@ -43,6 +43,9 @@ class WorkoutEditorFrame(ttk.Frame):
         # Lista degli allenamenti disponibili
         self.workouts = []
         
+        # Lista degli allenamenti importati
+        self.imported_workouts = []
+        
         # Allenamento corrente
         self.current_workout = None
         self.current_workout_id = None
@@ -54,6 +57,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Creazione dei widget
         self.create_widgets()
     
+
     def create_widgets(self):
         """Crea i widget del frame."""
         # Frame principale
@@ -73,6 +77,25 @@ class WorkoutEditorFrame(ttk.Frame):
         paned.add(right_frame, weight=3)
         
         # --- Parte sinistra: Lista degli allenamenti ---
+        
+        # Frame per selezionare la fonte degli allenamenti
+        source_frame = ttk.Frame(left_frame)
+        source_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        ttk.Label(source_frame, text="Fonte:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Variabile per la fonte degli allenamenti
+        self.source_var = tk.StringVar(value="garmin")
+        
+        # Radio buttons per le fonti
+        sources_frame = ttk.Frame(source_frame)
+        sources_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        ttk.Radiobutton(sources_frame, text="Garmin Connect", value="garmin", 
+                       variable=self.source_var, command=self.on_source_change).pack(side=tk.LEFT, padx=(0, 5))
+        
+        ttk.Radiobutton(sources_frame, text="Importati", value="imported", 
+                       variable=self.source_var, command=self.on_source_change).pack(side=tk.LEFT)
         
         # Filtro
         filter_frame = ttk.Frame(left_frame)
@@ -216,48 +239,10 @@ class WorkoutEditorFrame(ttk.Frame):
         self.discard_button = ttk.Button(save_frame, text="Annulla modifiche", 
                                       command=self.discard_changes, state="disabled")
         self.discard_button.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Inizializza la lista degli allenamenti importati
+        self.imported_workouts = []
 
-    def update_workout_list(self):
-        """Aggiorna la lista degli allenamenti disponibili."""
-        # Ottieni il filtro
-        filter_text = self.filter_var.get().lower()
-        
-        # Pulisci la lista attuale
-        for item in self.workout_tree.get_children():
-            self.workout_tree.delete(item)
-        
-        # Filtra gli allenamenti
-        filtered_workouts = []
-        for workout_id, workout_data in self.workouts:
-            # Estrai i dati dell'allenamento
-            name = workout_data.get('workoutName', '')
-            
-            # Applica il filtro
-            if filter_text and filter_text not in name.lower():
-                continue
-            
-            # Aggiungi all'elenco filtrato
-            filtered_workouts.append((workout_id, workout_data))
-        
-        # Aggiungi gli allenamenti filtrati alla lista
-        for workout_id, workout_data in filtered_workouts:
-            # Estrai i dati dell'allenamento
-            name = workout_data.get('workoutName', '')
-            
-            # Ottieni il tipo di sport
-            sport_type = 'running'  # Default
-            if 'sportType' in workout_data and 'sportTypeKey' in workout_data['sportType']:
-                sport_type = workout_data['sportType']['sportTypeKey']
-            
-            # Conta gli step
-            step_count = 0
-            for segment in workout_data.get('workoutSegments', []):
-                step_count += len(segment.get('workoutSteps', []))
-            
-            # Aggiungi alla lista
-            self.workout_tree.insert("", "end", 
-                                  values=(name, sport_type, step_count), 
-                                  tags=(workout_id,))
     
     def on_workout_selected(self, event):
         """
@@ -301,35 +286,119 @@ class WorkoutEditorFrame(ttk.Frame):
         else:
             self.move_down_button.config(state="disabled")
     
-    def refresh_workouts(self):
-        """Aggiorna la lista degli allenamenti da Garmin Connect."""
-        # Verifica che ci sia un client Garmin
-        if not self.garmin_client:
-            show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
-            return
-        
-        try:
-            # Ottieni la lista degli allenamenti
-            workouts_data = self.garmin_client.list_workouts()
-            
-            # Trasforma in una lista di tuple (id, data)
-            self.workouts = []
-            for workout in workouts_data:
-                workout_id = str(workout.get('workoutId', ''))
-                self.workouts.append((workout_id, workout))
-            
-            # Aggiorna la lista
-            self.update_workout_list()
-            
-            # Mostra messaggio di conferma
-            self.controller.set_status("Allenamenti aggiornati da Garmin Connect")
-            
-        except Exception as e:
-            logging.error(f"Errore nell'aggiornamento degli allenamenti: {str(e)}")
-            show_error("Errore", 
-                     f"Impossibile aggiornare gli allenamenti: {str(e)}", 
-                     parent=self)
     
+    def on_source_change(self):
+        """Gestisce il cambio di fonte degli allenamenti."""
+        source = self.source_var.get()
+        
+        if source == "garmin":
+            # Abilita il pulsante di refresh solo se siamo connessi a Garmin
+            if self.garmin_client:
+                self.refresh_button.config(state="normal")
+            else:
+                self.refresh_button.config(state="disabled")
+            
+            # Carica gli allenamenti da Garmin se disponibili
+            if self.garmin_client and not self.workouts:
+                self.refresh_workouts()
+        else:  # source == "imported"
+            # Disabilita il pulsante di refresh
+            self.refresh_button.config(state="disabled")
+            
+            # Carica gli allenamenti importati
+            self.load_imported_workouts()
+        
+        # Aggiorna la lista
+        self.update_workout_list()
+
+    def load_imported_workouts(self):
+        """Carica gli allenamenti importati dall'ImportExportFrame."""
+        # Accedi all'ImportExportFrame tramite il controller
+        import_export_frame = self.controller.import_export
+        
+        if hasattr(import_export_frame, 'imported_workouts') and import_export_frame.imported_workouts:
+            # Converti gli allenamenti importati nel formato usato dal WorkoutEditorFrame
+            self.imported_workouts = []
+            
+            for idx, (name, workout) in enumerate(import_export_frame.imported_workouts):
+                # Crea un dizionario che simula il formato degli allenamenti di Garmin
+                workout_data = {
+                    'workoutId': f"imported_{idx}",
+                    'workoutName': name,
+                    'sportType': {
+                        'sportTypeKey': workout.sport_type
+                    },
+                    'description': workout.description,
+                    'workoutSegments': [
+                        {
+                            'workoutSteps': workout.workout_steps
+                        }
+                    ],
+                    'source': 'imported'
+                }
+                
+                self.imported_workouts.append((workout_data['workoutId'], workout_data))
+        else:
+            # Nessun allenamento importato
+            self.imported_workouts = []
+            
+            # Mostra un messaggio se non ci sono allenamenti importati
+            if self.source_var.get() == "imported":
+                show_info("Nessun allenamento importato", 
+                        "Non ci sono allenamenti importati. Importa allenamenti dalla scheda 'Importa/Esporta'.", 
+                        parent=self)
+
+    def update_workout_list(self):
+        """Aggiorna la lista degli allenamenti disponibili."""
+        # Ottieni il filtro
+        filter_text = self.filter_var.get().lower()
+        
+        # Pulisci la lista attuale
+        for item in self.workout_tree.get_children():
+            self.workout_tree.delete(item)
+        
+        # Determina la fonte degli allenamenti
+        source = self.source_var.get()
+        
+        # Scegli la lista appropriata in base alla fonte
+        if source == "garmin":
+            workouts_list = self.workouts
+        else:  # source == "imported"
+            workouts_list = getattr(self, 'imported_workouts', [])
+        
+        # Filtra gli allenamenti
+        filtered_workouts = []
+        for workout_id, workout_data in workouts_list:
+            # Estrai i dati dell'allenamento
+            name = workout_data.get('workoutName', '')
+            
+            # Applica il filtro
+            if filter_text and filter_text not in name.lower():
+                continue
+            
+            # Aggiungi all'elenco filtrato
+            filtered_workouts.append((workout_id, workout_data))
+        
+        # Aggiungi gli allenamenti filtrati alla lista
+        for workout_id, workout_data in filtered_workouts:
+            # Estrai i dati dell'allenamento
+            name = workout_data.get('workoutName', '')
+            
+            # Ottieni il tipo di sport
+            sport_type = 'running'  # Default
+            if 'sportType' in workout_data and 'sportTypeKey' in workout_data['sportType']:
+                sport_type = workout_data['sportType']['sportTypeKey']
+            
+            # Conta gli step
+            step_count = 0
+            for segment in workout_data.get('workoutSegments', []):
+                step_count += len(segment.get('workoutSteps', []))
+            
+            # Aggiungi alla lista
+            self.workout_tree.insert("", "end", 
+                                  values=(name, sport_type, step_count), 
+                                  tags=(workout_id,))
+
     def load_workout(self):
         """Carica l'allenamento selezionato nell'editor."""
         # Verifica che sia selezionato un allenamento
@@ -348,61 +417,151 @@ class WorkoutEditorFrame(ttk.Frame):
         item = selection[0]
         workout_id = self.workout_tree.item(item, "tags")[0]
         
+        # Determina la fonte dell'allenamento
+        source = self.source_var.get()
+        
+        if source == "garmin":
+            # Verifica che ci sia un client Garmin
+            if not self.garmin_client:
+                show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
+                return
+            
+            try:
+                # Ottieni i dettagli dell'allenamento
+                workout_data = self.garmin_client.get_workout(workout_id)
+                
+                if not workout_data:
+                    raise ValueError(f"Allenamento non trovato: {workout_id}")
+                
+                # Importa l'allenamento
+                from services.garmin_service import GarminService
+                service = GarminService(self.garmin_client)
+                
+                workout = service.import_workout(workout_data)
+                
+                if not workout:
+                    raise ValueError(f"Impossibile importare l'allenamento: {workout_id}")
+                
+                # Imposta l'allenamento corrente
+                self.current_workout = workout
+                self.current_workout_id = workout_id
+                self.current_workout_modified = False
+                
+                # Aggiorna i campi
+                self.name_var.set(workout.workout_name)
+                self.sport_var.set(workout.sport_type)
+                self.description_var.set(workout.description or "")
+                
+                # Aggiorna la lista degli step
+                self.update_steps_list()
+                
+                # Abilita i pulsanti
+                self.save_button.config(state="normal")
+                self.send_button.config(state="normal")
+                self.discard_button.config(state="normal")
+                
+                # Resetta lo step selezionato
+                self.selected_step_index = None
+                self.edit_button.config(state="disabled")
+                self.delete_step_button.config(state="disabled")
+                self.move_up_button.config(state="disabled")
+                self.move_down_button.config(state="disabled")
+                
+                # Mostra messaggio di conferma
+                self.controller.set_status(f"Allenamento '{workout.workout_name}' caricato")
+                
+            except Exception as e:
+                logging.error(f"Errore nel caricamento dell'allenamento: {str(e)}")
+                show_error("Errore", 
+                         f"Impossibile caricare l'allenamento: {str(e)}", 
+                         parent=self)
+        else:  # source == "imported"
+            try:
+                # Trova l'allenamento importato
+                import_export_frame = self.controller.import_export
+                
+                # L'ID per gli allenamenti importati è nel formato "imported_X"
+                if workout_id.startswith("imported_"):
+                    index = int(workout_id.split("_")[1])
+                    if index < len(import_export_frame.imported_workouts):
+                        name, workout = import_export_frame.imported_workouts[index]
+                        
+                        # Imposta l'allenamento corrente
+                        self.current_workout = workout
+                        self.current_workout_id = None  # Non ha un ID su Garmin
+                        self.current_workout_modified = False
+                        
+                        # Aggiorna i campi
+                        self.name_var.set(workout.workout_name)
+                        self.sport_var.set(workout.sport_type)
+                        self.description_var.set(workout.description or "")
+                        
+                        # Aggiorna la lista degli step
+                        self.update_steps_list()
+                        
+                        # Abilita i pulsanti
+                        self.save_button.config(state="normal")
+                        self.send_button.config(state="normal")
+                        self.discard_button.config(state="normal")
+                        
+                        # Resetta lo step selezionato
+                        self.selected_step_index = None
+                        self.edit_button.config(state="disabled")
+                        self.delete_step_button.config(state="disabled")
+                        self.move_up_button.config(state="disabled")
+                        self.move_down_button.config(state="disabled")
+                        
+                        # Mostra messaggio di conferma
+                        self.controller.set_status(f"Allenamento importato '{workout.workout_name}' caricato")
+                        return
+                    
+                # Se arriviamo qui, l'allenamento non è stato trovato
+                show_error("Errore", "Allenamento importato non trovato", parent=self)
+            
+            except Exception as e:
+                logging.error(f"Errore nel caricamento dell'allenamento importato: {str(e)}")
+                show_error("Errore", 
+                        f"Impossibile caricare l'allenamento: {str(e)}", 
+                        parent=self)
+
+    def on_workouts_imported(self):
+        """Chiamato quando vengono importati nuovi allenamenti."""
+        # Se siamo nella visualizzazione degli allenamenti importati, aggiorna la lista
+        if self.source_var.get() == "imported":
+            self.load_imported_workouts()
+            self.update_workout_list()
+
+    def refresh_workouts(self):
+        """Aggiorna la lista degli allenamenti da Garmin Connect."""
         # Verifica che ci sia un client Garmin
         if not self.garmin_client:
             show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
             return
         
         try:
-            # Ottieni i dettagli dell'allenamento
-            workout_data = self.garmin_client.get_workout(workout_id)
+            # Ottieni la lista degli allenamenti
+            workouts_data = self.garmin_client.list_workouts()
             
-            if not workout_data:
-                raise ValueError(f"Allenamento non trovato: {workout_id}")
+            # Trasforma in una lista di tuple (id, data)
+            self.workouts = []
+            for workout in workouts_data:
+                workout_id = str(workout.get('workoutId', ''))
+                self.workouts.append((workout_id, workout))
             
-            # Importa l'allenamento
-            from services.garmin_service import GarminService
-            service = GarminService(self.garmin_client)
-            
-            workout = service.import_workout(workout_data)
-            
-            if not workout:
-                raise ValueError(f"Impossibile importare l'allenamento: {workout_id}")
-            
-            # Imposta l'allenamento corrente
-            self.current_workout = workout
-            self.current_workout_id = workout_id
-            self.current_workout_modified = False
-            
-            # Aggiorna i campi
-            self.name_var.set(workout.workout_name)
-            self.sport_var.set(workout.sport_type)
-            self.description_var.set(workout.description or "")
-            
-            # Aggiorna la lista degli step
-            self.update_steps_list()
-            
-            # Abilita i pulsanti
-            self.save_button.config(state="normal")
-            self.send_button.config(state="normal")
-            self.discard_button.config(state="normal")
-            
-            # Resetta lo step selezionato
-            self.selected_step_index = None
-            self.edit_button.config(state="disabled")
-            self.delete_step_button.config(state="disabled")
-            self.move_up_button.config(state="disabled")
-            self.move_down_button.config(state="disabled")
+            # Aggiorna la lista solo se siamo in modalità Garmin
+            if self.source_var.get() == "garmin":
+                self.update_workout_list()
             
             # Mostra messaggio di conferma
-            self.controller.set_status(f"Allenamento '{workout.workout_name}' caricato")
+            self.controller.set_status("Allenamenti aggiornati da Garmin Connect")
             
         except Exception as e:
-            logging.error(f"Errore nel caricamento dell'allenamento: {str(e)}")
+            logging.error(f"Errore nell'aggiornamento degli allenamenti: {str(e)}")
             show_error("Errore", 
-                     f"Impossibile caricare l'allenamento: {str(e)}", 
+                     f"Impossibile aggiornare gli allenamenti: {str(e)}", 
                      parent=self)
     
+
     def new_workout(self):
         """Crea un nuovo allenamento."""
         # Verifica che non ci siano modifiche non salvate
