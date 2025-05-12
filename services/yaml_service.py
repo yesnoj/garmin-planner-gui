@@ -60,20 +60,6 @@ class YamlService:
     
     @staticmethod
     def import_workouts(file_path: str) -> List[Tuple[str, Workout]]:
-        """
-        Importa allenamenti da un file YAML.
-        
-        Args:
-            file_path: Percorso del file
-            
-        Returns:
-            Lista di tuple (nome, allenamento)
-            
-        Raises:
-            IOError: Se il file non può essere letto
-            yaml.YAMLError: Se il file non è un YAML valido
-            ValueError: Se il file non contiene allenamenti validi
-        """
         try:
             # Carica il file
             yaml_data = YamlService.load_yaml(file_path)
@@ -86,8 +72,12 @@ class YamlService:
             config_data = yaml_data.pop('config', {})
             name_prefix = config_data.get('name_prefix', '')
             
-            # Nomi speciali da ignorare
-            ignore_keys = ['config', 'heart_rates', 'paces', 'swim_paces', 'power_values', 'margins', 'athlete_name']
+            # MODIFICA: Assicurati che heart_rates non venga rimosso dal YAML
+            # quando si estraggono altre informazioni di configurazione
+            
+            # Nomi speciali da ignorare (rimuovi heart_rates dalla lista se presente)
+            ignore_keys = ['config', 'paces', 'swim_paces', 'power_values', 'margins', 'athlete_name', 'heart_rates']
+     
             
             # Lista degli allenamenti importati
             imported_workouts = []
@@ -131,18 +121,6 @@ class YamlService:
     
     @staticmethod
     def export_workouts(workouts: List[Tuple[str, Workout]], file_path: str, config: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Esporta allenamenti in un file YAML.
-        
-        Args:
-            workouts: Lista di tuple (nome, allenamento)
-            file_path: Percorso del file
-            config: Configurazione aggiuntiva (opzionale)
-            
-        Raises:
-            IOError: Se il file non può essere scritto
-            yaml.YAMLError: Se i dati non possono essere convertiti in YAML
-        """
         try:
             # Ottieni le impostazioni complete di configurazione
             app_config = get_config()
@@ -165,16 +143,16 @@ class YamlService:
                 'preferred_days': str(app_config.get('planning.preferred_days', [1, 3, 5])),
             })
             
-            # Aggiungi le informazioni di heart_rates
-            yaml_data['config']['heart_rates'] = {
+            # MODIFICA: Aggiungi heart_rates al livello principale, non in config
+            yaml_data['heart_rates'] = {
                 'max_hr': app_config.get('heart_rates.max_hr', 180)
             }
             
-            # Aggiungi le zone di frequenza cardiaca alla configurazione
+            # Aggiungi le zone di frequenza cardiaca al livello principale
             heart_rates = app_config.get('heart_rates', {})
             for name, value in heart_rates.items():
                 if name.endswith('_HR'):
-                    yaml_data['config']['heart_rates'][name] = value
+                    yaml_data['heart_rates'][name] = value
             
             # Aggiungi i paces, swim_paces e power_values
             yaml_data['paces'] = app_config.get('sports.running.paces', {})
