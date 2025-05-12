@@ -1069,25 +1069,31 @@ class ExcelService:
                 # Ottieni il workbook e i worksheet
                 workbook = writer.book
                 
-                # Formatta il foglio Workouts
-                workouts_sheet = writer.sheets['Workouts']
+                # Formatta il foglio Config
+                config_sheet = writer.sheets['Config']
+                value_col_idx = 2  # La colonna "Valore" è la seconda colonna (B)
                 
-                # Imposta la larghezza della colonna Steps
-                workouts_sheet.column_dimensions['F'].width = 60
+                # Imposta la larghezza delle colonne
+                config_sheet.column_dimensions['A'].width = 25  # Parametro
+                config_sheet.column_dimensions['B'].width = 30  # Valore
+                config_sheet.column_dimensions['C'].width = 40  # Descrizione
                 
-                # Abilita il text wrapping per tutte le celle nella colonna Steps
-                for row in range(2, len(workouts_df) + 2):  # +2 perché openpyxl parte da 1 e c'è l'intestazione
-                    cell = workouts_sheet.cell(row=row, column=6)  # La colonna F è la sesta colonna
-                    cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+                # Imposta il formato delle celle nella colonna "Valore" come testo
+                for row in range(2, len(config_df) + 2):  # +2 perché openpyxl parte da 1 e c'è l'intestazione
+                    cell = config_sheet.cell(row=row, column=value_col_idx)
+                    cell.number_format = '@'  # Imposta il formato come testo
                     
-                    # Imposta una altezza maggiore per la riga
-                    workouts_sheet.row_dimensions[row].height = 150  # Altezza in punti
+                    # Se il valore è numerico, convertilo esplicitamente in stringa
+                    if cell.value is not None:
+                        cell.value = str(cell.value)
                 
                 # Formatta il foglio Paces
                 paces_sheet = writer.sheets['Paces']
                 
-                # Determinare l'indice della colonna "Value" (B = 2)
-                value_col_idx = 2  # La colonna B è la seconda colonna (indice 2 in openpyxl)
+                # Imposta la larghezza delle colonne
+                paces_sheet.column_dimensions['A'].width = 25  # Name
+                paces_sheet.column_dimensions['B'].width = 20  # Value
+                paces_sheet.column_dimensions['C'].width = 40  # Note
                 
                 # Imposta il formato delle celle nella colonna "Value" come testo
                 for row in range(2, len(paces_df) + 2):
@@ -1098,8 +1104,14 @@ class ExcelService:
                     if cell.value is not None:
                         cell.value = str(cell.value)
                 
-                # Formatta anche il foglio HeartRates
+                # Formatta il foglio HeartRates
                 hr_sheet = writer.sheets['HeartRates']
+                
+                # Imposta la larghezza delle colonne
+                hr_sheet.column_dimensions['A'].width = 25  # Name
+                hr_sheet.column_dimensions['B'].width = 20  # Value
+                hr_sheet.column_dimensions['C'].width = 40  # Description
+                
                 for row in range(2, len(heart_rates_df) + 2):
                     cell = hr_sheet.cell(row=row, column=value_col_idx)
                     cell.number_format = '@'  # Imposta il formato come testo
@@ -1107,6 +1119,56 @@ class ExcelService:
                     # Se il valore è numerico, convertilo esplicitamente in stringa
                     if cell.value is not None:
                         cell.value = str(cell.value)
+                
+                # Formatta il foglio Workouts
+                workouts_sheet = writer.sheets['Workouts']
+                
+                # Imposta la larghezza delle colonne
+                workouts_sheet.column_dimensions['A'].width = 15  # Week
+                workouts_sheet.column_dimensions['B'].width = 15  # Date
+                workouts_sheet.column_dimensions['C'].width = 15  # Session
+                workouts_sheet.column_dimensions['D'].width = 15  # Sport
+                workouts_sheet.column_dimensions['E'].width = 30  # Description
+                workouts_sheet.column_dimensions['F'].width = 80  # Steps
+                
+                # Adatta righe e formatta cella Steps
+                for row in range(2, len(workouts_df) + 2):
+                    # Abilita il text wrapping per tutte le celle nella colonna Steps
+                    steps_cell = workouts_sheet.cell(row=row, column=6)  # La colonna F è la sesta colonna
+                    steps_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+                    
+                    # Imposta una altezza maggiore per la riga
+                    workouts_sheet.row_dimensions[row].height = 150  # Altezza in punti
+                
+                # Formatta il foglio Examples
+                examples_sheet = writer.sheets['Examples']
+                
+                # Imposta la larghezza delle colonne
+                examples_sheet.column_dimensions['A'].width = 25  # Type
+                examples_sheet.column_dimensions['B'].width = 30  # Example
+                examples_sheet.column_dimensions['C'].width = 50  # Description
+                
+                # Adatta le righe al contenuto per tutti i fogli
+                for sheet in [config_sheet, paces_sheet, hr_sheet, examples_sheet]:
+                    # Prima assicuriamoci che tutte le celle abbiano word wrap abilitato
+                    for row in sheet.iter_rows():
+                        for cell in row:
+                            if cell.value is not None:
+                                current_alignment = cell.alignment
+                                # Creiamo un nuovo oggetto Alignment che preserva le proprietà esistenti
+                                # ma imposta wrap_text=True
+                                new_alignment = openpyxl.styles.Alignment(
+                                    horizontal=current_alignment.horizontal,
+                                    vertical=current_alignment.vertical,
+                                    textRotation=current_alignment.textRotation,
+                                    wrapText=True,
+                                    shrinkToFit=current_alignment.shrinkToFit,
+                                    indent=current_alignment.indent,
+                                    relativeIndent=current_alignment.relativeIndent,
+                                    justifyLastLine=current_alignment.justifyLastLine,
+                                    readingOrder=current_alignment.readingOrder
+                                )
+                                cell.alignment = new_alignment
             
         except Exception as e:
             logging.error(f"Errore nell'esportazione degli allenamenti in Excel: {str(e)}")
