@@ -508,26 +508,26 @@ class CalendarFrame(ttk.Frame):
         grid_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # Data
-        ttk.Label(grid_frame, text="Data:").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=2)
-        ttk.Label(grid_frame, text=item.date).grid(row=0, column=1, sticky="w", pady=2)
+        ttk.Label(grid_frame, text="Data:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=2)
+        ttk.Label(grid_frame, text=item.date).grid(row=0, column=1, sticky=tk.W, pady=2)
         
         # Sport
-        ttk.Label(grid_frame, text="Sport:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=2)
-        ttk.Label(grid_frame, text=item.sport_type.capitalize()).grid(row=1, column=1, sticky="w", pady=2)
+        ttk.Label(grid_frame, text="Sport:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=2)
+        ttk.Label(grid_frame, text=item.sport_type.capitalize()).grid(row=1, column=1, sticky=tk.W, pady=2)
         
         # Descrizione
-        ttk.Label(grid_frame, text="Descrizione:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=2)
+        ttk.Label(grid_frame, text="Descrizione:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=2)
         
         description_text = item.description if item.description else "Nessuna descrizione disponibile"
-        ttk.Label(grid_frame, text=description_text, wraplength=400).grid(row=2, column=1, sticky="w", pady=2)
+        ttk.Label(grid_frame, text=description_text, wraplength=400).grid(row=2, column=1, sticky=tk.W, pady=2)
         
         # Fonte
-        ttk.Label(grid_frame, text="Fonte:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=2)
-        ttk.Label(grid_frame, text=item.source.capitalize()).grid(row=3, column=1, sticky="w", pady=2)
+        ttk.Label(grid_frame, text="Fonte:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=2)
+        ttk.Label(grid_frame, text=item.source.capitalize()).grid(row=3, column=1, sticky=tk.W, pady=2)
         
         # ID
-        ttk.Label(grid_frame, text="ID:").grid(row=4, column=0, sticky="w", padx=(0, 10), pady=2)
-        ttk.Label(grid_frame, text=item.item_id).grid(row=4, column=1, sticky="w", pady=2)
+        ttk.Label(grid_frame, text="ID:").grid(row=4, column=0, sticky=tk.W, padx=(0, 10), pady=2)
+        ttk.Label(grid_frame, text=item.item_id).grid(row=4, column=1, sticky=tk.W, pady=2)
         
         # Per i workout, mostra pulsanti per modificare o eliminare
         if item.item_type == "workout" and self.garmin_client:

@@ -359,6 +359,10 @@ class WorkoutStepDialog(tk.Toplevel):
             
             self.target_min_var.set(min_pace)
             self.target_max_var.set(max_pace)
+            
+            # MODIFICATO: Salva il nome della zona
+            if hasattr(self, 'target') and self.target:
+                self.target.target_zone_name = zone_name
                     
         elif target_type == "heart.rate.zone":
             # Get the heart rate zone
@@ -402,6 +406,10 @@ class WorkoutStepDialog(tk.Toplevel):
             
             self.target_min_var.set(str(min_hr_value))
             self.target_max_var.set(str(max_hr_value))
+            
+            # MODIFICATO: Salva il nome della zona
+            if hasattr(self, 'target') and self.target:
+                self.target.target_zone_name = zone_name
                     
         elif target_type == "power.zone" and self.sport_type == "cycling":
             # Get the power zone
@@ -435,6 +443,10 @@ class WorkoutStepDialog(tk.Toplevel):
             
             self.target_min_var.set(str(min_power_value))
             self.target_max_var.set(str(max_power_value))
+            
+            # MODIFICATO: Salva il nome della zona
+            if hasattr(self, 'target') and self.target:
+                self.target.target_zone_name = zone_name
     
     def on_step_type_change(self):
         """Gestisce il cambio di tipo di step."""
@@ -601,7 +613,7 @@ class WorkoutStepDialog(tk.Toplevel):
         # Crea il target
         target_type = self.target_type_var.get()
         target = None
-        
+
         if target_type != "no.target":
             if target_type in ["pace.zone", "heart.rate.zone", "power.zone"]:
                 min_value = self.target_min_var.get()
@@ -626,12 +638,17 @@ class WorkoutStepDialog(tk.Toplevel):
                         to_value = 0
                 
                 target = Target(target_type, to_value, from_value)
-            
+                
+                # MODIFICATO: Imposta il nome della zona se è stata selezionata una zona predefinita
+                zone_name = self.predefined_zone_var.get()
+                if zone_name:
+                    target.target_zone_name = zone_name
+                    
             elif target_type == "zone":
                 # Usa la zona predefinita
                 zone = int(self.target_zone_var.get()) if self.target_zone_var.get() else None
                 target = Target(target_type, zone=zone)
-        
+
         # Se non è stato creato un target, usa il valore predefinito
         if not target:
             target = Target()

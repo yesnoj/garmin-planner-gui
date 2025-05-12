@@ -106,6 +106,20 @@ class YamlService:
                 # Crea l'allenamento
                 workout = create_workout_from_yaml(yaml_data, name)
                 
+                # MODIFICATO: Assicurati che tutti gli step dell'allenamento abbiano correttamente il target_zone_name
+                for step in workout.workout_steps:
+                    if step.target and step.target.target != "no.target":
+                        # Se lo step ha un target, verifica se possiamo ricavare il nome della zona dal YAML
+                        if hasattr(step, 'yaml_target_zone') and step.yaml_target_zone:
+                            step.target.target_zone_name = step.yaml_target_zone
+                    
+                    # Gestisci anche gli step ripetuti
+                    if step.step_type == 'repeat' and step.workout_steps:
+                        for child_step in step.workout_steps:
+                            if child_step.target and child_step.target.target != "no.target":
+                                if hasattr(child_step, 'yaml_target_zone') and child_step.yaml_target_zone:
+                                    child_step.target.target_zone_name = child_step.yaml_target_zone
+                
                 # Aggiungi alla lista
                 imported_workouts.append((display_name, workout))
             

@@ -1245,7 +1245,10 @@ class WorkoutEditorFrame(ttk.Frame):
             app_config = get_config()
             target_text = "Target: "
             
-            if step.target.target == "pace.zone":
+            # MODIFICATO: Controlla prima se esiste target_zone_name
+            if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                target_text += f"Zona {step.target.target_zone_name}"
+            elif step.target.target == "pace.zone":
                 # Converti da m/s a min/km
                 from_value = step.target.from_value
                 to_value = step.target.to_value

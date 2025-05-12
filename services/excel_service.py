@@ -167,6 +167,7 @@ class ExcelService:
                                         if '_HR' in zone_name:
                                             # Zona di frequenza cardiaca
                                             target = Target('heart.rate.zone')
+                                            target.target_zone_name = zone_name  # AGGIUNGI QUESTA RIGA
                                             
                                             # Calcola i valori dalla configurazione
                                             hr_zones = config.get('heart_rates', {})
@@ -188,6 +189,7 @@ class ExcelService:
                                             
                                             if pace_zone:
                                                 target = Target('pace.zone')
+                                                target.target_zone_name = zone_name  # AGGIUNGI QUESTA RIGA
                                                 
                                                 # Converti da min/km a m/s
                                                 if '-' in pace_zone:

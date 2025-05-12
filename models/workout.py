@@ -8,7 +8,7 @@ Classi per la gestione degli allenamenti.
 import logging
 import re
 from typing import Dict, Any, List, Optional, Union
-
+from config import get_config
 
 class Target:
     """Classe per i target degli step."""
@@ -366,6 +366,9 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
     Raises:
         ValueError: Se il valore non è valido
     """
+    # Importazione necessaria
+    from config import get_config
+    
     # Valori di default
     end_condition = "lap.button"
     end_condition_value = None
@@ -378,9 +381,15 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
     if ' -- ' in value:
         value, description = value.split(' -- ', 1)
     
+    # Variabile per tenere traccia del nome della zona
+    yaml_target_zone = None
+    
     # Estrai il target se presente
     if ' @ ' in value:
         value, target = value.split(' @ ', 1)
+        
+        # Salva il nome della zona originale per riferimento
+        yaml_target_zone = target
         
         # Determina il tipo di target
         if target.startswith('Z') and '_HR' in target:
@@ -596,12 +605,11 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
     
     # Crea il target
     target = Target(target_type, target_to, target_from)
-    # Aggiungi il nome della zona se riconosciuto
-    if ' @ ' in value:
-        _, zone_name = value.split(' @ ', 1)
-        if zone_name in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z1_HR', 'Z2_HR', 'Z3_HR', 'Z4_HR', 'Z5_HR', 
-                         'recovery', 'threshold', 'marathon', 'race_pace', 'sweet_spot', 'sprint']:
-            target.target_zone_name = zone_name
+    
+    # Imposta il nome della zona
+    if yaml_target_zone and yaml_target_zone in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z1_HR', 'Z2_HR', 'Z3_HR', 'Z4_HR', 'Z5_HR', 
+                 'recovery', 'threshold', 'marathon', 'race_pace', 'sweet_spot', 'sprint']:
+        target.target_zone_name = yaml_target_zone
     
     # Crea lo step
     step = WorkoutStep(
@@ -612,5 +620,9 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
         end_condition_value=end_condition_value,
         target=target
     )
+    
+    # Salva il nome della zona originale come attributo temporaneo
+    if yaml_target_zone:
+        step.yaml_target_zone = yaml_target_zone
     
     return step
