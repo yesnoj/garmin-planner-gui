@@ -282,6 +282,39 @@ class Config:
         """
         return self.get('sports.cycling.power_values', {})
 
+    def replace_section(self, section_key: str, new_data: Dict) -> None:
+        """
+        Sostituisce completamente una sezione della configurazione con nuovi dati.
+        Questo è utile per rimuovere chiavi non più presenti nei dati importati.
+        
+        Args:
+            section_key: Chiave della sezione da sostituire (es. 'sports.running.paces')
+            new_data: Nuovi dati con cui sostituire la sezione
+        """
+        parts = section_key.split('.')
+        config = self.config
+        
+        # Naviga fino al penultimo livello
+        for part in parts[:-1]:
+            if part not in config:
+                config[part] = {}
+            config = config[part]
+        
+        # Sostituisci l'ultimo livello con i nuovi dati
+        last_key = parts[-1]
+        if last_key in config:
+            # Rimuovi completamente il vecchio dizionario
+            config[last_key] = {}
+        else:
+            # Crea un nuovo dizionario se non esiste
+            config[last_key] = {}
+        
+        # Aggiungi i nuovi dati
+        config[last_key].update(new_data)
+        
+        logging.info(f"Sezione '{section_key}' sostituita completamente con nuovi dati")
+
+
 # Istanza singleton della configurazione
 _config_instance: Optional[Config] = None
 

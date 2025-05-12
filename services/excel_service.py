@@ -128,6 +128,11 @@ class ExcelService:
                 
                 current_section = None
                 
+                # Dizionari per raccogliere tutti i valori di ogni sezione
+                running_paces = {}
+                cycling_powers = {}
+                swimming_paces = {}
+                
                 # Processa riga per riga
                 for idx, row in paces_df.iterrows():
                     name = row.get('Name')
@@ -151,23 +156,33 @@ class ExcelService:
                     if pd.isna(name) or pd.isna(value):
                         continue
                     
-                    # Importa i valori in base alla sezione
+                    # Raccogli i valori in base alla sezione
                     if current_section == "running":
                         # Assicurati che il valore sia una stringa
                         str_value = str(value)
-                        config.set(f'sports.running.paces.{name}', str_value)
-                        logging.info(f"Importato running pace: {name} = {str_value}")
+                        running_paces[name] = str_value
+                        logging.info(f"Raccolto running pace: {name} = {str_value}")
                     elif current_section == "cycling":
                         str_value = str(value)
-                        if name == "ftp":
-                            config.set(f'sports.cycling.power_values.{name}', str_value)
-                        else:
-                            config.set(f'sports.cycling.power_values.{name}', str_value)
-                        logging.info(f"Importato cycling power: {name} = {str_value}")
+                        cycling_powers[name] = str_value
+                        logging.info(f"Raccolto cycling power: {name} = {str_value}")
                     elif current_section == "swimming":
                         str_value = str(value)
-                        config.set(f'sports.swimming.paces.{name}', str_value)
-                        logging.info(f"Importato swimming pace: {name} = {str_value}")
+                        swimming_paces[name] = str_value
+                        logging.info(f"Raccolto swimming pace: {name} = {str_value}")
+                
+                # Usa replace_section per sostituire completamente le sezioni
+                if running_paces:
+                    config.replace_section('sports.running.paces', running_paces)
+                    logging.info(f"Sostituita sezione running paces con {len(running_paces)} valori")
+                
+                if cycling_powers:
+                    config.replace_section('sports.cycling.power_values', cycling_powers)
+                    logging.info(f"Sostituita sezione cycling powers con {len(cycling_powers)} valori")
+                
+                if swimming_paces:
+                    config.replace_section('sports.swimming.paces', swimming_paces)
+                    logging.info(f"Sostituita sezione swimming paces con {len(swimming_paces)} valori")
                 
                 logging.info("Valori di pace/potenza importati con successo")
             
@@ -177,6 +192,9 @@ class ExcelService:
                 
                 logging.info(f"Foglio 'HeartRates' trovato. Colonne: {hr_df.columns.tolist()}")
                 
+                # Dizionario per raccogliere tutti i valori HR
+                heart_rates = {}
+                
                 # Verifica che le colonne necessarie siano presenti
                 if 'Name' in hr_df.columns and 'Value' in hr_df.columns:
                     for _, row in hr_df.iterrows():
@@ -185,12 +203,13 @@ class ExcelService:
                         
                         if pd.notna(name) and pd.notna(value):
                             str_value = str(value)
-                            if name == 'max_hr' or name == 'rest_hr':
-                                config.set(f'heart_rates.{name}', str_value)
-                                logging.info(f"Importato heart rate: {name} = {str_value}")
-                            elif name.endswith('_HR'):
-                                config.set(f'heart_rates.{name}', str_value)
-                                logging.info(f"Importato heart rate zone: {name} = {str_value}")
+                            heart_rates[name] = str_value
+                            logging.info(f"Raccolto heart rate: {name} = {str_value}")
+                
+                # Usa replace_section per sostituire completamente la sezione
+                if heart_rates:
+                    config.replace_section('heart_rates', heart_rates)
+                    logging.info(f"Sostituita sezione heart rates con {len(heart_rates)} valori")
                 
                 logging.info("Valori di frequenza cardiaca importati con successo")
             

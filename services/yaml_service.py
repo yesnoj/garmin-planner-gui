@@ -114,27 +114,43 @@ class YamlService:
             
             # Importa i parametri di heart_rates
             if 'heart_rates' in yaml_data:
+                # Usa il nuovo metodo replace_section per sostituire completamente la sezione
                 heart_rates = yaml_data.pop('heart_rates')
+                app_config.replace_section('heart_rates', heart_rates)
+                
+                # Log dei valori importati
                 for key, value in heart_rates.items():
-                    app_config.set(f'heart_rates.{key}', value)
+                    logging.info(f"Importato heart rate: {key} = {value}")
             
             # Importa i parametri di pace per la corsa
             if 'paces' in yaml_data:
+                # Sostituisci completamente la sezione
                 paces = yaml_data.pop('paces')
+                app_config.replace_section('sports.running.paces', paces)
+                
+                # Log dei valori importati
                 for key, value in paces.items():
-                    app_config.set(f'sports.running.paces.{key}', value)
+                    logging.info(f"Importato running pace: {key} = {value}")
             
             # Importa i parametri di power per il ciclismo
             if 'power_values' in yaml_data:
+                # Sostituisci completamente la sezione
                 power_values = yaml_data.pop('power_values')
+                app_config.replace_section('sports.cycling.power_values', power_values)
+                
+                # Log dei valori importati
                 for key, value in power_values.items():
-                    app_config.set(f'sports.cycling.power_values.{key}', value)
+                    logging.info(f"Importato cycling power: {key} = {value}")
             
             # Importa i parametri di pace per il nuoto
             if 'swim_paces' in yaml_data:
+                # Sostituisci completamente la sezione
                 swim_paces = yaml_data.pop('swim_paces')
+                app_config.replace_section('sports.swimming.paces', swim_paces)
+                
+                # Log dei valori importati
                 for key, value in swim_paces.items():
-                    app_config.set(f'sports.swimming.paces.{key}', value)
+                    logging.info(f"Importato swimming pace: {key} = {value}")
             
             # Salva le modifiche alla configurazione
             app_config.save()
