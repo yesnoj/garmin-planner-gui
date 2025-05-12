@@ -13,7 +13,8 @@ from typing import Dict, Any, List, Tuple, Optional
 try:
     import pandas as pd
     import openpyxl
-    from openpyxl.styles import Alignment
+    from openpyxl.styles import PatternFill, Border, Side, Alignment, Protection, Font, NamedStyle
+    from openpyxl.utils import get_column_letter
     PANDAS_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
@@ -1060,115 +1061,189 @@ class ExcelService:
             
             # Salva i DataFrame in un file Excel
             with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                # Esporta i dati in fogli Excel
                 config_df.to_excel(writer, sheet_name='Config', index=False)
                 paces_df.to_excel(writer, sheet_name='Paces', index=False)
                 heart_rates_df.to_excel(writer, sheet_name='HeartRates', index=False)
                 workouts_df.to_excel(writer, sheet_name='Workouts', index=False)
                 examples_df.to_excel(writer, sheet_name='Examples', index=False)
                 
-                # Ottieni il workbook e i worksheet
+                # Ottieni il workbook e i worksheets
                 workbook = writer.book
+                
+                # Definizione degli stili
+                # Stile per intestazioni
+                header_style = NamedStyle(name="header_style")
+                header_style.font = Font(name='Arial', size=12, bold=True, color="FFFFFF")
+                header_style.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                header_style.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                header_style.border = Border(
+                    left=Side(border_style="thin", color="000000"),
+                    right=Side(border_style="thin", color="000000"),
+                    top=Side(border_style="thin", color="000000"),
+                    bottom=Side(border_style="thin", color="000000")
+                )
+                
+                # Stile per celle di dati normali
+                normal_style = NamedStyle(name="normal_style")
+                normal_style.font = Font(name='Arial', size=11)
+                normal_style.alignment = Alignment(wrap_text=True, vertical="top")
+                normal_style.border = Border(
+                    left=Side(border_style="thin", color="D9D9D9"),
+                    right=Side(border_style="thin", color="D9D9D9"),
+                    top=Side(border_style="thin", color="D9D9D9"),
+                    bottom=Side(border_style="thin", color="D9D9D9")
+                )
+                
+                # Stile per celle di dati alternate (righe dispari)
+                alt_style = NamedStyle(name="alt_style")
+                alt_style.font = Font(name='Arial', size=11)
+                alt_style.fill = PatternFill(start_color="EBF1F9", end_color="EBF1F9", fill_type="solid")
+                alt_style.alignment = Alignment(wrap_text=True, vertical="top")
+                alt_style.border = Border(
+                    left=Side(border_style="thin", color="D9D9D9"),
+                    right=Side(border_style="thin", color="D9D9D9"),
+                    top=Side(border_style="thin", color="D9D9D9"),
+                    bottom=Side(border_style="thin", color="D9D9D9")
+                )
+                
+                # Stile per titoli di sezione (usato in Paces)
+                section_style = NamedStyle(name="section_style")
+                section_style.font = Font(name='Arial', size=12, bold=True)
+                section_style.fill = PatternFill(start_color="B4C6E7", end_color="B4C6E7", fill_type="solid")
+                section_style.alignment = Alignment(horizontal="left", vertical="center")
+                section_style.border = Border(
+                    left=Side(border_style="thin", color="000000"),
+                    right=Side(border_style="thin", color="000000"),
+                    top=Side(border_style="thin", color="000000"),
+                    bottom=Side(border_style="thin", color="000000")
+                )
+                
+                # Aggiungi gli stili al workbook
+                if "header_style" not in workbook.named_styles:
+                    workbook.add_named_style(header_style)
+                if "normal_style" not in workbook.named_styles:
+                    workbook.add_named_style(normal_style)
+                if "alt_style" not in workbook.named_styles:
+                    workbook.add_named_style(alt_style)
+                if "section_style" not in workbook.named_styles:
+                    workbook.add_named_style(section_style)
+                
+                # Funzione per applicare stili a un foglio
+                def style_worksheet(worksheet, col_widths, freeze_panes="A2"):
+                    # Imposta larghezza colonne
+                    for col_letter, width in col_widths.items():
+                        worksheet.column_dimensions[col_letter].width = width
+                    
+                    # Applica stile alle intestazioni
+                    for cell in worksheet[1]:
+                        cell.style = "header_style"
+                        
+                    # Imposta altezza intestazioni
+                    worksheet.row_dimensions[1].height = 30
+                    
+                    # Applica stili alternati alle righe di dati
+                    max_row = worksheet.max_row
+                    for row in range(2, max_row + 1):
+                        for cell in worksheet[row]:
+                            if row % 2 == 0:  # Righe pari
+                                cell.style = "normal_style"
+                            else:  # Righe dispari
+                                cell.style = "alt_style"
+                    
+                    # Freezing panes (blocca intestazioni)
+                    if freeze_panes:
+                        worksheet.freeze_panes = freeze_panes
+                        
+                    # Aggiungi filtro automatico alle intestazioni
+                    worksheet.auto_filter.ref = f"A1:{get_column_letter(worksheet.max_column)}{worksheet.max_row}"
+                    
+                    # Regola l'altezza delle righe in base al contenuto
+                    for row in range(2, max_row + 1):
+                        # Imposta un'altezza minima ragionevole
+                        row_height = 20  # Altezza minima
+                        
+                        # Se ci sono celle con molto testo, aumenta l'altezza
+                        for cell in worksheet[row]:
+                            if cell.value and isinstance(cell.value, str) and len(cell.value) > 100:
+                                row_height = max(row_height, 75)  # Celle con molto testo
+                            elif cell.value and isinstance(cell.value, str) and len(cell.value) > 50:
+                                row_height = max(row_height, 40)  # Celle con testo medio
+                        
+                        worksheet.row_dimensions[row].height = row_height
                 
                 # Formatta il foglio Config
                 config_sheet = writer.sheets['Config']
-                value_col_idx = 2  # La colonna "Valore" è la seconda colonna (B)
+                config_col_widths = {'A': 30, 'B': 35, 'C': 45}
+                style_worksheet(config_sheet, config_col_widths)
                 
-                # Imposta la larghezza delle colonne
-                config_sheet.column_dimensions['A'].width = 25  # Parametro
-                config_sheet.column_dimensions['B'].width = 30  # Valore
-                config_sheet.column_dimensions['C'].width = 40  # Descrizione
-                
-                # Imposta il formato delle celle nella colonna "Valore" come testo
-                for row in range(2, len(config_df) + 2):  # +2 perché openpyxl parte da 1 e c'è l'intestazione
-                    cell = config_sheet.cell(row=row, column=value_col_idx)
-                    cell.number_format = '@'  # Imposta il formato come testo
-                    
-                    # Se il valore è numerico, convertilo esplicitamente in stringa
+                # Assicura che la colonna Valore in Config sia formattata come testo
+                for row in range(2, len(config_df) + 2):
+                    cell = config_sheet.cell(row=row, column=2)  # Colonna B (Valore)
+                    cell.number_format = '@'  # Formato testo
                     if cell.value is not None:
                         cell.value = str(cell.value)
                 
                 # Formatta il foglio Paces
                 paces_sheet = writer.sheets['Paces']
+                paces_col_widths = {'A': 30, 'B': 25, 'C': 45}
+                style_worksheet(paces_sheet, paces_col_widths)
                 
-                # Imposta la larghezza delle colonne
-                paces_sheet.column_dimensions['A'].width = 25  # Name
-                paces_sheet.column_dimensions['B'].width = 20  # Value
-                paces_sheet.column_dimensions['C'].width = 40  # Note
+                # Applica stile speciale alle righe di intestazioni di sezione in Paces
+                run_section = "RITMI PER LA CORSA"
+                cycle_section = "POTENZA PER IL CICLISMO"
+                swim_section = "PASSI VASCA PER IL NUOTO"
                 
-                # Imposta il formato delle celle nella colonna "Value" come testo
+                for row in range(1, paces_sheet.max_row + 1):
+                    cell_val = paces_sheet.cell(row=row, column=1).value
+                    if cell_val and isinstance(cell_val, str) and (run_section in cell_val or cycle_section in cell_val or swim_section in cell_val):
+                        for cell in paces_sheet[row]:
+                            cell.style = "section_style"
+                        paces_sheet.row_dimensions[row].height = 25
+                
+                # Assicura che la colonna Value in Paces sia formattata come testo
                 for row in range(2, len(paces_df) + 2):
-                    cell = paces_sheet.cell(row=row, column=value_col_idx)
-                    cell.number_format = '@'  # Imposta il formato come testo
-                    
-                    # Se il valore è numerico, convertilo esplicitamente in stringa
+                    cell = paces_sheet.cell(row=row, column=2)  # Colonna B (Value)
+                    cell.number_format = '@'  # Formato testo
                     if cell.value is not None:
                         cell.value = str(cell.value)
                 
                 # Formatta il foglio HeartRates
                 hr_sheet = writer.sheets['HeartRates']
+                hr_col_widths = {'A': 30, 'B': 25, 'C': 45}
+                style_worksheet(hr_sheet, hr_col_widths)
                 
-                # Imposta la larghezza delle colonne
-                hr_sheet.column_dimensions['A'].width = 25  # Name
-                hr_sheet.column_dimensions['B'].width = 20  # Value
-                hr_sheet.column_dimensions['C'].width = 40  # Description
-                
+                # Assicura che la colonna Value in HeartRates sia formattata come testo
                 for row in range(2, len(heart_rates_df) + 2):
-                    cell = hr_sheet.cell(row=row, column=value_col_idx)
-                    cell.number_format = '@'  # Imposta il formato come testo
-                    
-                    # Se il valore è numerico, convertilo esplicitamente in stringa
+                    cell = hr_sheet.cell(row=row, column=2)  # Colonna B (Value)
+                    cell.number_format = '@'  # Formato testo
                     if cell.value is not None:
                         cell.value = str(cell.value)
                 
                 # Formatta il foglio Workouts
                 workouts_sheet = writer.sheets['Workouts']
+                workouts_col_widths = {'A': 15, 'B': 15, 'C': 15, 'D': 20, 'E': 35, 'F': 90}
+                style_worksheet(workouts_sheet, workouts_col_widths)
                 
-                # Imposta la larghezza delle colonne
-                workouts_sheet.column_dimensions['A'].width = 15  # Week
-                workouts_sheet.column_dimensions['B'].width = 15  # Date
-                workouts_sheet.column_dimensions['C'].width = 15  # Session
-                workouts_sheet.column_dimensions['D'].width = 15  # Sport
-                workouts_sheet.column_dimensions['E'].width = 30  # Description
-                workouts_sheet.column_dimensions['F'].width = 80  # Steps
-                
-                # Adatta righe e formatta cella Steps
+                # Imposta altezza maggiore per le righe nel foglio Workouts
                 for row in range(2, len(workouts_df) + 2):
-                    # Abilita il text wrapping per tutte le celle nella colonna Steps
-                    steps_cell = workouts_sheet.cell(row=row, column=6)  # La colonna F è la sesta colonna
-                    steps_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
-                    
-                    # Imposta una altezza maggiore per la riga
-                    workouts_sheet.row_dimensions[row].height = 150  # Altezza in punti
+                    workouts_sheet.row_dimensions[row].height = 150
                 
                 # Formatta il foglio Examples
                 examples_sheet = writer.sheets['Examples']
+                examples_col_widths = {'A': 30, 'B': 35, 'C': 50}
+                style_worksheet(examples_sheet, examples_col_widths)
                 
-                # Imposta la larghezza delle colonne
-                examples_sheet.column_dimensions['A'].width = 25  # Type
-                examples_sheet.column_dimensions['B'].width = 30  # Example
-                examples_sheet.column_dimensions['C'].width = 50  # Description
-                
-                # Adatta le righe al contenuto per tutti i fogli
-                for sheet in [config_sheet, paces_sheet, hr_sheet, examples_sheet]:
-                    # Prima assicuriamoci che tutte le celle abbiano word wrap abilitato
-                    for row in sheet.iter_rows():
-                        for cell in row:
-                            if cell.value is not None:
-                                current_alignment = cell.alignment
-                                # Creiamo un nuovo oggetto Alignment che preserva le proprietà esistenti
-                                # ma imposta wrap_text=True
-                                new_alignment = openpyxl.styles.Alignment(
-                                    horizontal=current_alignment.horizontal,
-                                    vertical=current_alignment.vertical,
-                                    textRotation=current_alignment.textRotation,
-                                    wrapText=True,
-                                    shrinkToFit=current_alignment.shrinkToFit,
-                                    indent=current_alignment.indent,
-                                    relativeIndent=current_alignment.relativeIndent,
-                                    justifyLastLine=current_alignment.justifyLastLine,
-                                    readingOrder=current_alignment.readingOrder
-                                )
-                                cell.alignment = new_alignment
+                # Applica stile speciale alle righe di intestazioni di sezione in Examples
+                for row in range(1, examples_sheet.max_row + 1):
+                    cell_val = examples_sheet.cell(row=row, column=1).value
+                    cell_val_col2 = examples_sheet.cell(row=row, column=2).value
+                    
+                    # Identifica le righe di intestazione (hanno colonna B vuota e colonna A non vuota)
+                    if cell_val and isinstance(cell_val, str) and cell_val.isupper() and (cell_val_col2 is None or cell_val_col2 == ''):
+                        for cell in examples_sheet[row]:
+                            cell.style = "section_style"
+                        examples_sheet.row_dimensions[row].height = 25
             
         except Exception as e:
             logging.error(f"Errore nell'esportazione degli allenamenti in Excel: {str(e)}")
