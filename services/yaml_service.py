@@ -72,12 +72,75 @@ class YamlService:
             config_data = yaml_data.pop('config', {})
             name_prefix = config_data.get('name_prefix', '')
             
-            # MODIFICA: Assicurati che heart_rates non venga rimosso dal YAML
-            # quando si estraggono altre informazioni di configurazione
+            # Ottieni istanza di configurazione
+            app_config = get_config()
             
-            # Nomi speciali da ignorare (rimuovi heart_rates dalla lista se presente)
+            # Importa i parametri di configurazione
+            if 'athlete_name' in config_data:
+                app_config.set('athlete_name', config_data['athlete_name'])
+            
+            if 'race_day' in config_data:
+                app_config.set('planning.race_day', config_data['race_day'])
+            
+            if 'preferred_days' in config_data:
+                # Converti in lista se è una stringa
+                if isinstance(config_data['preferred_days'], str):
+                    try:
+                        import ast
+                        days_list = ast.literal_eval(config_data['preferred_days'])
+                        app_config.set('planning.preferred_days', days_list)
+                    except:
+                        pass
+                elif isinstance(config_data['preferred_days'], (list, tuple)):
+                    app_config.set('planning.preferred_days', list(config_data['preferred_days']))
+            
+            # Importa i margini
+            if 'margins' in config_data:
+                margins = config_data['margins']
+                if 'faster' in margins:
+                    app_config.set('sports.running.margins.faster', margins['faster'])
+                    app_config.set('sports.swimming.margins.faster', margins['faster'])
+                if 'slower' in margins:
+                    app_config.set('sports.running.margins.slower', margins['slower'])
+                    app_config.set('sports.swimming.margins.slower', margins['slower'])
+                if 'power_up' in margins:
+                    app_config.set('sports.cycling.margins.power_up', margins['power_up'])
+                if 'power_down' in margins:
+                    app_config.set('sports.cycling.margins.power_down', margins['power_down'])
+                if 'hr_up' in margins:
+                    app_config.set('hr_margins.hr_up', margins['hr_up'])
+                if 'hr_down' in margins:
+                    app_config.set('hr_margins.hr_down', margins['hr_down'])
+            
+            # Importa i parametri di heart_rates
+            if 'heart_rates' in yaml_data:
+                heart_rates = yaml_data.pop('heart_rates')
+                for key, value in heart_rates.items():
+                    app_config.set(f'heart_rates.{key}', value)
+            
+            # Importa i parametri di pace per la corsa
+            if 'paces' in yaml_data:
+                paces = yaml_data.pop('paces')
+                for key, value in paces.items():
+                    app_config.set(f'sports.running.paces.{key}', value)
+            
+            # Importa i parametri di power per il ciclismo
+            if 'power_values' in yaml_data:
+                power_values = yaml_data.pop('power_values')
+                for key, value in power_values.items():
+                    app_config.set(f'sports.cycling.power_values.{key}', value)
+            
+            # Importa i parametri di pace per il nuoto
+            if 'swim_paces' in yaml_data:
+                swim_paces = yaml_data.pop('swim_paces')
+                for key, value in swim_paces.items():
+                    app_config.set(f'sports.swimming.paces.{key}', value)
+            
+            # Salva le modifiche alla configurazione
+            app_config.save()
+            
+            # Nomi speciali da ignorare 
             ignore_keys = ['config', 'paces', 'swim_paces', 'power_values', 'margins', 'athlete_name', 'heart_rates']
-     
             
             # Lista degli allenamenti importati
             imported_workouts = []
@@ -96,7 +159,7 @@ class YamlService:
                 # Crea l'allenamento
                 workout = create_workout_from_yaml(yaml_data, name)
                 
-                # MODIFICATO: Assicurati che tutti gli step dell'allenamento abbiano correttamente il target_zone_name
+                # Assicurati che tutti gli step dell'allenamento abbiano correttamente il target_zone_name
                 for step in workout.workout_steps:
                     if step.target and step.target.target != "no.target":
                         # Se lo step ha un target, verifica se possiamo ricavare il nome della zona dal YAML
@@ -118,7 +181,7 @@ class YamlService:
         except Exception as e:
             logging.error(f"Errore nell'importazione degli allenamenti: {str(e)}")
             raise
-    
+
     @staticmethod
     def export_workouts(workouts: List[Tuple[str, Workout]], file_path: str, config: Optional[Dict[str, Any]] = None) -> None:
         try:
@@ -143,16 +206,11 @@ class YamlService:
                 'preferred_days': str(app_config.get('planning.preferred_days', [1, 3, 5])),
             })
             
-            # MODIFICA: Aggiungi heart_rates al livello principale, non in config
-            yaml_data['heart_rates'] = {
-                'max_hr': app_config.get('heart_rates.max_hr', 180)
-            }
-            
-            # Aggiungi le zone di frequenza cardiaca al livello principale
+            # Aggiungi heart_rates al livello principale
+            yaml_data['heart_rates'] = {}
             heart_rates = app_config.get('heart_rates', {})
             for name, value in heart_rates.items():
-                if name.endswith('_HR'):
-                    yaml_data['heart_rates'][name] = value
+                yaml_data['heart_rates'][name] = value
             
             # Aggiungi i paces, swim_paces e power_values
             yaml_data['paces'] = app_config.get('sports.running.paces', {})
