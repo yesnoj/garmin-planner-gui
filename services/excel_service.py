@@ -227,7 +227,7 @@ class ExcelService:
                 logging.info(f"Numero di righe nel foglio: {len(workouts_df)}")
                 
                 # Verifica che ci siano le colonne necessarie
-                required_columns = ['Week', 'Date', 'Session', 'Sport', 'Description', 'Steps']
+                required_columns = ['Week', 'Session', 'Date', 'Sport', 'Description', 'Steps']
                 missing_columns = [col for col in required_columns if col not in workouts_df.columns]
                 
                 if missing_columns:
@@ -252,11 +252,27 @@ class ExcelService:
                     try:
                         # Ottieni i dati dell'allenamento
                         week = workouts_df.loc[row_idx, 'Week']
-                        date = workouts_df.loc[row_idx, 'Date']
-                        session = workouts_df.loc[row_idx, 'Session']
+                        session = workouts_df.loc[row_idx, 'Session']  # Spostato prima di Date
+                        date = workouts_df.loc[row_idx, 'Date']        # Ora dopo Session
                         sport_type = workouts_df.loc[row_idx, 'Sport']
                         description = workouts_df.loc[row_idx, 'Description'] if pd.notna(workouts_df.loc[row_idx, 'Description']) else ''
                         steps_text = workouts_df.loc[row_idx, 'Steps'] if pd.notna(workouts_df.loc[row_idx, 'Steps']) else ''
+
+                        # Converti la data da DD/MM/YYYY a YYYY-MM-DD se necessario
+                        workout_date = None
+                        if pd.notna(date):
+                            # Verifica se la data contiene slash (formato DD/MM/YYYY)
+                            date_str = str(date)
+                            if '/' in date_str and len(date_str.split('/')) == 3:
+                                try:
+                                    day, month, year = date_str.split('/')
+                                    workout_date = f"{year}-{month}-{day}"  # Converte in YYYY-MM-DD
+                                except:
+                                    workout_date = date_str  # Mantiene originale in caso di errore
+                            elif isinstance(date, pd.Timestamp):
+                                workout_date = date.strftime('%Y-%m-%d')  # Formato ISO standard
+                            else:
+                                workout_date = date_str  # Mantiene così com'è se non nel formato previsto
                         
                         logging.info(f"Processando allenamento: W{week}D{session} - {description}")
                         logging.info(f"Sport: {sport_type}, Date: {date}")
@@ -279,14 +295,7 @@ class ExcelService:
                         # Costruisci il nome dell'allenamento
                         workout_name = f"W{week}D{session} - {description}"
                         
-                        # Data dell'allenamento
-                        workout_date = None
-                        if pd.notna(date):
-                            if isinstance(date, pd.Timestamp):
-                                workout_date = date.strftime('%Y-%m-%d')
-                            else:
-                                workout_date = str(date)
-                        
+                    
                         # Creare l'allenamento
                         workout = Workout(sport_type, workout_name, description)
                         
@@ -852,7 +861,7 @@ class ExcelService:
             config_df = pd.DataFrame(columns=['Parametro', 'Valore', 'Descrizione'])
             paces_df = pd.DataFrame(columns=['Name', 'Value', 'Note'])
             heart_rates_df = pd.DataFrame(columns=['Name', 'Value', 'Description'])
-            workouts_df = pd.DataFrame(columns=['Week', 'Date', 'Session', 'Sport', 'Description', 'Steps'])
+            workouts_df = pd.DataFrame(columns=['Week', 'Session', 'Date', 'Sport', 'Description', 'Steps'])
             examples_df = pd.DataFrame(columns=['Type', 'Example', 'Description'])
             
             # Popola il DataFrame della configurazione
@@ -1062,14 +1071,28 @@ class ExcelService:
                         workout_date = step.date
                         break
                 
+                # Formatta la data se esiste (DD/MM/YYYY)
+                formatted_date = None
+                if workout_date:
+                    try:
+                        # Parse della data e riformattazione
+                        date_parts = workout_date.split('-')
+                        if len(date_parts) == 3:
+                            year, month, day = date_parts
+                            formatted_date = f"{day}/{month}/{year}"
+                        else:
+                            formatted_date = workout_date  # Mantiene originale se formato errato
+                    except:
+                        formatted_date = workout_date  # Mantiene originale in caso di errore
+                
                 # Converti gli step in formato testo
                 steps_text = ExcelService.format_steps_for_export(workout)
                 
-                # Aggiungi al DataFrame
+                # Aggiungi al DataFrame - Nota l'ordine cambiato: Session prima di Date
                 workout_rows.append({
                     'Week': week,
-                    'Date': workout_date,
-                    'Session': session,
+                    'Session': session,  # Ora prima di Date
+                    'Date': formatted_date,  # Ora dopo Session con data formattata
                     'Sport': workout.sport_type.capitalize(),
                     'Description': description,
                     'Steps': steps_text

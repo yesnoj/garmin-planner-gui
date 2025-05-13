@@ -220,6 +220,7 @@ class YamlService:
                 'athlete_name': app_config.get('athlete_name', ''),
                 'race_day': app_config.get('planning.race_day', ''),
                 'preferred_days': str(app_config.get('planning.preferred_days', [1, 3, 5])),
+                'date_format': 'YYYY-MM-DD',  # Nota sul formato delle date utilizzato
             })
             
             # Aggiungi heart_rates al livello principale

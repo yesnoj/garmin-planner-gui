@@ -905,7 +905,10 @@ class WorkoutEditorFrame(ttk.Frame):
         filtered_workouts = []
         for workout_id, workout_data in workouts_list:
             # Estrai i dati dell'allenamento
-            name = workout_data.get('workoutName', '')
+            if isinstance(workout_data, dict):
+                name = workout_data.get('workoutName', '')
+            else:
+                name = workout_data.workout_name
             
             # Applica il filtro
             if filter_text and filter_text not in name.lower():
@@ -916,26 +919,52 @@ class WorkoutEditorFrame(ttk.Frame):
         
         # Aggiungi gli allenamenti filtrati alla lista
         for workout_id, workout_data in filtered_workouts:
-            # Estrai i dati dell'allenamento
-            name = workout_data.get('workoutName', '')
-            
-            # Ottieni il tipo di sport
-            sport_type = 'running'  # Default
-            if 'sportType' in workout_data and 'sportTypeKey' in workout_data['sportType']:
-                sport_type = workout_data['sportType']['sportTypeKey']
-            
-            # Ottieni la data
-            date = workout_data.get('date', '')
-            
-            # Conta gli step
-            step_count = 0
-            for segment in workout_data.get('workoutSegments', []):
-                step_count += len(segment.get('workoutSteps', []))
+            # Estrai il tipo di sport correttamente in base al tipo di dati
+            if isinstance(workout_data, dict):
+                # Se è un dizionario (come nel caso dei dati importati o di Garmin)
+                sport_type = workout_data.get('sportType', {}).get('sportTypeKey', 'running')
+                sport_icon = get_icon_for_sport(sport_type)
+                
+                # Per il conteggio degli step
+                steps = workout_data.get('workoutSegments', [{}])[0].get('workoutSteps', [])
+                step_count = len(steps)
+                
+                # Nome dell'allenamento
+                name = workout_data.get('workoutName', '')
+                
+                # Gestione data per dizionari
+                date_display = ""
+                if workout_data.get('date'):
+                    date_str = workout_data.get('date')
+                    # Tenta di formattare se nel formato YYYY-MM-DD
+                    try:
+                        year, month, day = date_str.split('-')
+                        date_display = f"{day}/{month}/{year}"
+                    except:
+                        date_display = date_str
+            else:
+                # Se è un oggetto Workout
+                sport_type = workout_data.sport_type
+                sport_icon = get_icon_for_sport(sport_type)
+                step_count = len(workout_data.workout_steps)
+                name = workout_data.workout_name
+                
+                # Gestione data per oggetti Workout
+                date_display = ""
+                for step in workout_data.workout_steps:
+                    if hasattr(step, 'date') and step.date:
+                        # Converti da YYYY-MM-DD a DD/MM/YYYY
+                        try:
+                            year, month, day = step.date.split('-')
+                            date_display = f"{day}/{month}/{year}"
+                        except:
+                            date_display = step.date
+                        break
             
             # Aggiungi alla lista
             self.workout_tree.insert("", "end", 
-                                  values=(name, sport_type, date, step_count), 
-                                  tags=(workout_id,))
+                                   values=(name, f"{sport_icon} {sport_type}", date_display, step_count), 
+                                   tags=(workout_id,))
 
     def load_workout(self):
         """Carica l'allenamento selezionato nell'editor."""
