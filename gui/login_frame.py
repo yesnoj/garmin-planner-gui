@@ -80,13 +80,13 @@ class LoginFrame(ttk.Frame):
         self.save_credentials_var = tk.BooleanVar(value=False)
         self.save_credentials_check = ttk.Checkbutton(
             options_frame, 
-            text="Ricorda le credenziali (solo email)",
+            text="Ricorda le credenziali",
             variable=self.save_credentials_var
         )
         self.save_credentials_check.pack(side=tk.LEFT)
         
         create_tooltip(self.save_credentials_check, 
-                     "Salva l'email per il prossimo login.\nLa password non viene mai salvata.")
+                     "Salva l'email per il prossimo login.")
         
         # Configura il form per espandersi
         form_grid.columnconfigure(1, weight=1)
@@ -134,10 +134,16 @@ class LoginFrame(ttk.Frame):
             credentials_file = os.path.expanduser("~/.garmin_planner/credentials.txt")
             if os.path.exists(credentials_file):
                 with open(credentials_file, "r") as f:
-                    email = f.read().strip()
-                    if email:
+                    lines = f.readlines()
+                    if len(lines) >= 1:
+                        email = lines[0].strip()
                         self.email_var.set(email)
                         self.save_credentials_var.set(True)
+                        
+                        # Carica anche la password se disponibile
+                        if len(lines) >= 2:
+                            password = lines[1].strip()
+                            self.password_var.set(password)
         except Exception as e:
             logging.error(f"Error loading saved credentials: {e}")
     
@@ -150,7 +156,9 @@ class LoginFrame(ttk.Frame):
                 
                 credentials_file = os.path.join(credentials_dir, "credentials.txt")
                 with open(credentials_file, "w") as f:
-                    f.write(self.email_var.get())
+                    f.write(self.email_var.get() + "\n")
+                    # Salva anche la password
+                    f.write(self.password_var.get())
             except Exception as e:
                 logging.error(f"Error saving credentials: {e}")
     
