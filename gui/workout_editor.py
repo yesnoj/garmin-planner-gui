@@ -276,12 +276,25 @@ class WorkoutEditorFrame(ttk.Frame):
         if not self.current_workout:
             return
         
-        # Verifica che ci sia uno step selezionato
-        if self.selected_step_index is None:
-            return
+        # Ottieni lo step da modificare
+        step = None
         
-        # Ottieni lo step
-        step = self.current_workout.workout_steps[self.selected_step_index]
+        if self.selected_step_path and len(self.selected_step_path) > 1:
+            # È uno step nidificato, naviga l'albero per trovarlo
+            current = self.current_workout.workout_steps[self.selected_step_path[0]]
+            for i in range(1, len(self.selected_step_path)):
+                if hasattr(current, 'workout_steps') and 0 <= self.selected_step_path[i] < len(current.workout_steps):
+                    current = current.workout_steps[self.selected_step_path[i]]
+                else:
+                    # Indice non valido
+                    return
+            step = current
+        elif self.selected_step_index is not None:
+            # È uno step di primo livello
+            step = self.current_workout.workout_steps[self.selected_step_index]
+        else:
+            # Nessuno step selezionato
+            return
         
         # Verifica che non sia uno step speciale con la data
         if hasattr(step, 'date') and step.date:
@@ -298,7 +311,16 @@ class WorkoutEditorFrame(ttk.Frame):
             def on_repeat_edited(edited_step):
                 # Aggiorna lo step nell'allenamento
                 if edited_step:
-                    self.current_workout.workout_steps[self.selected_step_index] = edited_step
+                    if self.selected_step_path and len(self.selected_step_path) > 1:
+                        # È uno step nidificato, naviga l'albero per trovare il genitore
+                        parent = self.current_workout.workout_steps[self.selected_step_path[0]]
+                        for i in range(1, len(self.selected_step_path) - 1):
+                            parent = parent.workout_steps[self.selected_step_path[i]]
+                        # Aggiorna lo step
+                        parent.workout_steps[self.selected_step_path[-1]] = edited_step
+                    else:
+                        # È uno step di primo livello
+                        self.current_workout.workout_steps[self.selected_step_index] = edited_step
                     
                     # Segna come modificato
                     self.current_workout_modified = True
@@ -317,7 +339,16 @@ class WorkoutEditorFrame(ttk.Frame):
             def on_step_edited(edited_step):
                 # Aggiorna lo step nell'allenamento
                 if edited_step:
-                    self.current_workout.workout_steps[self.selected_step_index] = edited_step
+                    if self.selected_step_path and len(self.selected_step_path) > 1:
+                        # È uno step nidificato, naviga l'albero per trovare il genitore
+                        parent = self.current_workout.workout_steps[self.selected_step_path[0]]
+                        for i in range(1, len(self.selected_step_path) - 1):
+                            parent = parent.workout_steps[self.selected_step_path[i]]
+                        # Aggiorna lo step
+                        parent.workout_steps[self.selected_step_path[-1]] = edited_step
+                    else:
+                        # È uno step di primo livello
+                        self.current_workout.workout_steps[self.selected_step_index] = edited_step
                     
                     # Segna come modificato
                     self.current_workout_modified = True
@@ -407,9 +438,17 @@ class WorkoutEditorFrame(ttk.Frame):
         self.update_steps_list()
         
         # Seleziona il nuovo step
-        self.on_step_selected(self.selected_step_index)
+        # Dobbiamo trovare l'indice dell'interfaccia corrispondente all'indice originale
+        visible_index = None
+        for i, orig_idx in enumerate(self.step_index_map):
+            if orig_idx == self.selected_step_index:
+                visible_index = i
+                break
+        
+        if visible_index is not None:
+            self.on_step_selected(visible_index)
 
-
+    # E analogo aggiornamento per move_step_down
     def move_step_down(self):
         """Sposta lo step selezionato verso il basso."""
         # Verifica che ci sia un allenamento corrente
@@ -447,7 +486,15 @@ class WorkoutEditorFrame(ttk.Frame):
         self.update_steps_list()
         
         # Seleziona il nuovo step
-        self.on_step_selected(self.selected_step_index)
+        # Dobbiamo trovare l'indice dell'interfaccia corrispondente all'indice originale
+        visible_index = None
+        for i, orig_idx in enumerate(self.step_index_map):
+            if orig_idx == self.selected_step_index:
+                visible_index = i
+                break
+        
+        if visible_index is not None:
+            self.on_step_selected(visible_index)
 
 
     def add_step(self):
@@ -823,31 +870,45 @@ class WorkoutEditorFrame(ttk.Frame):
             # Disabilita il pulsante per eliminare
             self.delete_button.config(state="disabled")
     
-    def on_step_selected(self, index):
+
+    def on_step_selected(self, index, path=None):
         """
         Gestisce la selezione di uno step nella lista.
         
         Args:
-            index: Indice dello step selezionato
+            index: Indice dello step selezionato nella lista visualizzata
+            path: Percorso completo nell'albero degli step per step nidificati
         """
-        # Salva l'indice selezionato
-        self.selected_step_index = index
+        # Converti l'indice dell'interfaccia nell'indice originale
+        if hasattr(self, 'step_index_map') and 0 <= index < len(self.step_index_map):
+            original_index = self.step_index_map[index]
+        else:
+            original_index = index
+        
+        # Salva l'indice selezionato e il percorso
+        self.selected_step_index = original_index
+        self.selected_step_path = path
         
         # Abilita i pulsanti
         self.edit_button.config(state="normal")
         self.delete_step_button.config(state="normal")
         
         # Abilita/disabilita i pulsanti di spostamento
-        if index > 0:
-            self.move_up_button.config(state="normal")
+        if original_index > 0:
+            prev_step = self.current_workout.workout_steps[original_index - 1]
+            if hasattr(prev_step, 'date') and prev_step.date:
+                # Se lo step precedente è uno step della data, disabilita il pulsante
+                self.move_up_button.config(state="disabled")
+            else:
+                self.move_up_button.config(state="normal")
         else:
             self.move_up_button.config(state="disabled")
         
-        if index < len(self.current_workout.workout_steps) - 1:
+        if original_index < len(self.current_workout.workout_steps) - 1:
             self.move_down_button.config(state="normal")
         else:
             self.move_down_button.config(state="disabled")
-    
+        
     
     def on_source_change(self):
         """Gestisce il cambio di fonte degli allenamenti."""
@@ -1238,6 +1299,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Mostra messaggio di conferma
         self.controller.set_status("Nuovo allenamento creato")
     
+
     def update_steps_list(self):
         """Aggiorna la lista degli step dell'allenamento corrente."""
         # Pulisci il contenitore degli step
@@ -1256,20 +1318,31 @@ class WorkoutEditorFrame(ttk.Frame):
             ttk.Label(self.steps_container, text="L'allenamento non ha step").pack()
             return
         
+        # Crea una mappa degli indici dalla lista filtrata alla lista originale
+        self.step_index_map = []
+        for i, step in enumerate(self.current_workout.workout_steps):
+            if not (hasattr(step, 'date') and step.date):
+                self.step_index_map.append(i)
+        
         # Crea i widget per gli step
         for i, step in enumerate(steps_to_show):
             self.create_step_widget(self.steps_container, step, i)
     
-    def create_step_widget(self, parent, step, index, indent=0):
+    def create_step_widget(self, parent, step, index, indent=0, parent_indices=None):
         """
         Crea un widget per uno step.
         
         Args:
             parent: Widget genitore
             step: Step da visualizzare
-            index: Indice dello step
+            index: Indice dello step nella lista filtrata
             indent: Livello di indentazione (per step nidificati)
+            parent_indices: Lista di indici per step nidificati (percorso completo nell'albero degli step)
         """
+        # Se parent_indices è None, inizializza con una lista vuota
+        if parent_indices is None:
+            parent_indices = []
+        
         # Crea un frame per lo step
         step_frame = ttk.Frame(parent)
         step_frame.pack(fill=tk.X, padx=(indent * 20, 0), pady=2)
@@ -1437,20 +1510,151 @@ class WorkoutEditorFrame(ttk.Frame):
         if step.description:
             ttk.Label(details_frame, text=f"  •  {step.description}").pack(side=tk.LEFT)
         
+        # Costruisci il percorso completo per questo step
+        current_path = parent_indices + [self.step_index_map[index]]
+        
         # Step ripetizioni
         if step.step_type == "repeat" and step.workout_steps:
             # Crea un frame per gli step figli
             child_frame = ttk.Frame(parent)
             child_frame.pack(fill=tk.X, padx=(indent * 20 + 20, 0), pady=0)
             
+            # Crea una mappa degli indici per gli step interni della ripetizione
+            child_index_map = []
+            for i, child_step in enumerate(step.workout_steps):
+                child_index_map.append(i)
+            
             # Crea i widget per gli step figli
             for i, child_step in enumerate(step.workout_steps):
-                self.create_step_widget(child_frame, child_step, -1, indent + 1)
+                # Costruisci il percorso per questo figlio
+                child_path = current_path + [i]
+                # Nota: per gli step figli, passiamo -1 come indice perché non sono nella mappa principale
+                self.create_child_step_widget(child_frame, child_step, i, indent + 1, child_path, child_index_map)
         
         # Associa eventi
-        content_frame.bind("<Button-1>", lambda e, idx=index: self.on_step_selected(idx))
-        header_frame.bind("<Button-1>", lambda e, idx=index: self.on_step_selected(idx))
-        details_frame.bind("<Button-1>", lambda e, idx=index: self.on_step_selected(idx))
+        content_frame.bind("<Button-1>", lambda e, idx=index, path=current_path: self.on_step_selected(idx, path))
+        header_frame.bind("<Button-1>", lambda e, idx=index, path=current_path: self.on_step_selected(idx, path))
+        details_frame.bind("<Button-1>", lambda e, idx=index, path=current_path: self.on_step_selected(idx, path))
+        
+        # Doppio click per modificare
+        content_frame.bind("<Double-1>", lambda e: self.edit_step())
+        header_frame.bind("<Double-1>", lambda e: self.edit_step())
+        details_frame.bind("<Double-1>", lambda e: self.edit_step())
+
+
+    def create_child_step_widget(self, parent, step, index, indent=0, path=None, index_map=None):
+        """
+        Crea un widget per uno step figlio all'interno di una ripetizione.
+        
+        Args:
+            parent: Widget genitore
+            step: Step da visualizzare
+            index: Indice dello step nella lista del genitore
+            indent: Livello di indentazione
+            path: Percorso completo nell'albero degli step
+            index_map: Mappa degli indici per questo livello
+        """
+        # Crea un frame per lo step
+        step_frame = ttk.Frame(parent)
+        step_frame.pack(fill=tk.X, padx=(indent * 20, 0), pady=2)
+        
+        # Colore dello step
+        step_color = get_color_for_step(step.step_type, self.config.get('ui.theme', 'light'))
+        
+        # Crea un frame per il contenuto dello step con sfondo colorato
+        content_frame = ttk.Frame(step_frame, style="Card.TFrame")
+        content_frame.pack(fill=tk.X)
+        
+        # Intestazione dello step
+        header_frame = ttk.Frame(content_frame)
+        header_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        # Icona e tipo di step
+        icon = get_icon_for_step(step.step_type)
+        ttk.Label(header_frame, text=f"{icon} {step.step_type.capitalize()}", 
+                foreground=step_color, font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        
+        # Dettagli dello step
+        details_frame = ttk.Frame(content_frame)
+        details_frame.pack(fill=tk.X, padx=5, pady=(0, 5))
+        
+        # Condizione di fine
+        end_condition_text = ""
+        
+        if step.end_condition == "lap.button":
+            end_condition_text = "Fino a pulsante lap"
+        elif step.end_condition == "time":
+            value = step.end_condition_value
+            if isinstance(value, (int, float)):
+                # Converti secondi in mm:ss
+                seconds = int(value)
+                minutes = seconds // 60
+                seconds = seconds % 60
+                value = f"{minutes}:{seconds:02d}"
+            
+            end_condition_text = f"Durata: {value}"
+        elif step.end_condition == "distance":
+            value = step.end_condition_value
+            if isinstance(value, (int, float)):
+                # Converti metri in m o km
+                if value >= 1000:
+                    value = f"{value / 1000:.2f}km".replace('.00', '')
+                else:
+                    value = f"{value}m"
+            
+            end_condition_text = f"Distanza: {value}"
+        elif step.end_condition == "iterations":
+            end_condition_text = f"Ripetizioni: {step.end_condition_value}"
+        
+        ttk.Label(details_frame, text=end_condition_text).pack(side=tk.LEFT)
+        
+        # Target
+        if step.target and step.target.target != "no.target":
+            app_config = get_config()
+            target_text = "Target: "
+            
+            # MODIFICATO: Controlla prima se esiste target_zone_name
+            if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                target_text += f"Zona {step.target.target_zone_name}"
+            elif step.target.target == "pace.zone":
+                # Converti da m/s a min/km
+                from_value = step.target.from_value
+                to_value = step.target.to_value
+                
+                if from_value and to_value:
+                    # ms a mm:ss/km
+                    min_pace_secs = int(1000 / from_value)
+                    max_pace_secs = int(1000 / to_value)
+                    
+                    min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
+                    max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
+                    
+                    target_text += f"Passo {min_pace}-{max_pace} min/km"
+                
+            elif step.target.target == "heart.rate.zone":
+                from_value = step.target.from_value
+                to_value = step.target.to_value
+                
+                if from_value and to_value:
+                    target_text += f"FC {from_value}-{to_value} bpm"
+                
+            elif step.target.target == "power.zone":
+                from_value = step.target.from_value
+                to_value = step.target.to_value
+                
+                if from_value and to_value:
+                    target_text += f"Potenza {from_value}-{to_value} W"
+            
+            ttk.Label(details_frame, text="  •  " + target_text).pack(side=tk.LEFT)
+        
+        # Descrizione
+        if step.description:
+            ttk.Label(details_frame, text=f"  •  {step.description}").pack(side=tk.LEFT)
+        
+        # Associa eventi - nota che passiamo il percorso completo
+        content_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
+        header_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
+        details_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
         
         # Doppio click per modificare
         content_frame.bind("<Double-1>", lambda e: self.edit_step())
@@ -1503,6 +1707,24 @@ class WorkoutEditorFrame(ttk.Frame):
         # Crea il dialog
         dialog = RepeatStepDialog(self, callback=on_repeat_added, sport_type=self.sport_var.get())
 
+    def on_nested_step_selected(self, path):
+        """
+        Gestisce la selezione di uno step nidificato (figlio di una ripetizione).
+        
+        Args:
+            path: Percorso completo nell'albero degli step
+        """
+        # Salva il percorso selezionato
+        self.selected_step_path = path
+        self.selected_step_index = None  # Impostiamo a None perché non è un indice diretto
+        
+        # Abilita i pulsanti di modifica
+        self.edit_button.config(state="normal")
+        self.delete_step_button.config(state="normal")
+        
+        # Disabilita i pulsanti di spostamento per step nidificati
+        self.move_up_button.config(state="disabled")
+        self.move_down_button.config(state="disabled")
 
     def save_workout(self):
         """Salva le modifiche all'allenamento corrente."""

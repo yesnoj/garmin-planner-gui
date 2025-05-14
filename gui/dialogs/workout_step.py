@@ -59,6 +59,15 @@ class WorkoutStepDialog(tk.Toplevel):
         self.step_type_var = tk.StringVar(value=self.step_type)
         self.description_var = tk.StringVar(value=self.description)
         self.end_condition_var = tk.StringVar(value=self.end_condition)
+        
+        # 3. Conversione del tempo da secondi a formato mm:ss per l'interfaccia
+        if isinstance(self.end_condition_value, (int, float)) and self.end_condition == "time":
+            # Converti secondi a mm:ss
+            seconds = int(self.end_condition_value)
+            minutes = seconds // 60
+            seconds = seconds % 60
+            self.end_condition_value = f"{minutes}:{seconds:02d}"
+        
         self.end_condition_value_var = tk.StringVar(value=self.end_condition_value)
         self.target_type_var = tk.StringVar(value=self.target.target)
         
@@ -119,6 +128,10 @@ class WorkoutStepDialog(tk.Toplevel):
 
         # Carica le zone predefinite
         self.load_predefined_zones()
+        
+        # Imposta la zona predefinita corretta se lo step ne ha una
+        if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
+            self.predefined_zone_var.set(self.target.target_zone_name)
     
 
     def create_widgets(self):
@@ -609,6 +622,15 @@ class WorkoutStepDialog(tk.Toplevel):
         description = self.description_var.get()
         end_condition = self.end_condition_var.get()
         end_condition_value = self.end_condition_value_var.get() if end_condition != "lap.button" else None
+        
+        # Converti il tempo da mm:ss a secondi
+        if end_condition == "time" and end_condition_value and ":" in end_condition_value:
+            try:
+                minutes, seconds = map(int, end_condition_value.split(":"))
+                end_condition_value = minutes * 60 + seconds
+            except (ValueError, TypeError):
+                # Fallback se il formato non è valido
+                pass
         
         # Crea il target
         target_type = self.target_type_var.get()
