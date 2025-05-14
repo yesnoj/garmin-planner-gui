@@ -838,13 +838,14 @@ class ExcelService:
             raise
 
     @staticmethod
-    def export_workouts(workouts: List[Tuple[str, Workout]], file_path: str) -> None:
+    def export_workouts(workouts: List[Tuple[str, Workout]], file_path: str, custom_config: Optional[Dict[str, Any]] = None) -> None:
         """
         Esporta allenamenti in un file Excel con multipli fogli.
         
         Args:
             workouts: Lista di tuple (nome, allenamento)
             file_path: Percorso del file
+            custom_config: Configurazione personalizzata (opzionale)
             
         Raises:
             ImportError: Se pandas non è disponibile
@@ -863,7 +864,7 @@ class ExcelService:
             heart_rates_df = pd.DataFrame(columns=['Name', 'Value', 'Description'])
             workouts_df = pd.DataFrame(columns=['Week', 'Session', 'Date', 'Sport', 'Description', 'Steps'])
             examples_df = pd.DataFrame(columns=['Type', 'Example', 'Description'])
-            
+                
             # Popola il DataFrame della configurazione
             config_rows = [
                 {'Parametro': 'athlete_name', 'Valore': config.get('athlete_name', ''), 

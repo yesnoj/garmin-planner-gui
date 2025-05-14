@@ -58,6 +58,336 @@ class WorkoutEditorFrame(ttk.Frame):
         self.create_widgets()
     
 
+    def select_race_day(self):
+        """Mostra un selettore di date per la data della gara."""
+        # Importa qui per evitare import circolari
+        from gui.dialogs.date_picker import DatePickerDialog
+        
+        def on_date_selected(date):
+            """Callback per la selezione della data."""
+            if date:
+                self.race_day_var.set(date)
+        
+        # Mostra il dialog
+        date_picker = DatePickerDialog(self, 
+                                    title="Seleziona la data della gara",
+                                    initial_date=self.race_day_var.get(),
+                                    callback=on_date_selected)
+
+    def save_planning_config(self):
+        """Salva la configurazione di pianificazione."""
+        # Salva il nome atleta
+        self.config.set('athlete_name', self.athlete_name_var.get())
+        
+        # Salva la data della gara
+        race_day = self.race_day_var.get()
+        if race_day and not is_valid_date(race_day):
+            show_error("Errore", "La data della gara deve essere nel formato YYYY-MM-DD", parent=self)
+            return
+        self.config.set('planning.race_day', race_day)
+        
+        # Salva i giorni preferiti
+        preferred_days = []
+        for i, var in enumerate(self.pref_days_vars):
+            if var.get():
+                preferred_days.append(i)
+        
+        self.config.set('planning.preferred_days', preferred_days)
+        self.config.save()
+        
+        # Mostra messaggio di conferma
+        show_info("Configurazione salvata", 
+                 "La configurazione di pianificazione è stata salvata", 
+                 parent=self)
+
+    def plan_workout_dates(self):
+        """Pianifica le date degli allenamenti."""
+        # Verifica che ci sia una data gara
+        race_day = self.race_day_var.get()
+        if not race_day:
+            show_error("Errore", "Imposta prima la data della gara", parent=self)
+            return
+        
+        # Verifica che la data gara sia valida
+        if not is_valid_date(race_day):
+            show_error("Errore", "La data della gara deve essere nel formato YYYY-MM-DD", parent=self)
+            return
+        
+        # Verifica che ci siano giorni preferiti
+        preferred_days = []
+        for i, var in enumerate(self.pref_days_vars):
+            if var.get():
+                preferred_days.append(i)
+        
+        if not preferred_days:
+            show_error("Errore", "Seleziona almeno un giorno preferito", parent=self)
+            return
+        
+        # Ottieni la lista degli allenamenti
+        source = self.source_var.get()
+        workouts_to_plan = []
+        
+        if source == "garmin":
+            # Usa gli allenamenti da Garmin
+            for wid, wdata in self.workouts:
+                if isinstance(wdata, dict):
+                    workouts_to_plan.append((wid, wdata))
+        else:  # source == "imported"
+            # Usa gli allenamenti importati
+            import_export_frame = self.controller.import_export
+            for i, (name, workout) in enumerate(import_export_frame.imported_workouts):
+                workout_id = f"imported_{i}"
+                # Crea un dict simile agli allenamenti Garmin
+                wdata = {
+                    'workoutId': workout_id,
+                    'workoutName': name,
+                    'sportType': {'sportTypeKey': workout.sport_type},
+                    'description': workout.description,
+                    'imported': True
+                }
+                workouts_to_plan.append((workout_id, wdata))
+        
+        if not workouts_to_plan:
+            show_error("Errore", "Non ci sono allenamenti da pianificare", parent=self)
+            return
+        
+        # Analizza i nomi degli allenamenti per trovare il pattern W##S##
+        week_sessions = {}  # Dizionario settimana -> lista di sessioni
+        
+        for _, wdata in workouts_to_plan:
+            name = wdata.get('workoutName', '')
+            if 'W' in name and 'S' in name or 'D' in name:
+                # Prova a estrarre la settimana e la sessione
+                pattern = r'W(\d+)[SD](\d+)'
+                match = re.search(pattern, name)
+                if match:
+                    week = int(match.group(1))
+                    session = int(match.group(2))
+                    
+                    if week not in week_sessions:
+                        week_sessions[week] = []
+                    
+                    week_sessions[week].append(session)
+        
+        # Verifica se il numero di sessioni è compatibile con i giorni preferiti
+        max_sessions = 0
+        for week, sessions in week_sessions.items():
+            max_sessions = max(max_sessions, max(sessions))
+        
+        if max_sessions > len(preferred_days):
+            show_warning("Attenzione", 
+                       f"Ci sono settimane con {max_sessions} sessioni, ma solo {len(preferred_days)} giorni preferiti", 
+                       parent=self)
+        
+        # Calcola le date degli allenamenti
+        race_date = datetime.datetime.strptime(race_day, '%Y-%m-%d').date()
+        
+        # Pianifica all'indietro a partire dalla data della gara
+        dates = {}  # Dizionario settimana,sessione -> data
+        
+        # Ordina le settimane in ordine decrescente (a partire dalla gara)
+        weeks = sorted(week_sessions.keys(), reverse=True)
+        
+        current_date = race_date
+        
+        # Per ogni settimana, in ordine decrescente
+        for week in weeks:
+            sessions = sorted(week_sessions[week])
+            
+            # Per ogni sessione, in ordine decrescente
+            for session in sorted(sessions, reverse=True):
+                # Trova il giorno preferito più vicino
+                days_to_subtract = 0
+                current_weekday = current_date.weekday()
+                
+                # Trova il giorno preferito più vicino all'indietro
+                while days_to_subtract < 7:
+                    check_day = (current_weekday - days_to_subtract) % 7
+                    if check_day in preferred_days:
+                        break
+                    days_to_subtract += 1
+                
+                # Calcola la data dell'allenamento
+                workout_date = current_date - datetime.timedelta(days=days_to_subtract)
+                
+                # Salva la data
+                dates[(week, session)] = workout_date
+                
+                # Vai al giorno precedente per la prossima sessione
+                current_date = workout_date - datetime.timedelta(days=1)
+        
+        # Associa le date agli allenamenti
+        updated_workouts = []
+        
+        for wid, wdata in workouts_to_plan:
+            name = wdata.get('workoutName', '')
+            match = re.search(r'W(\d+)[SD](\d+)', name)
+            
+            if match:
+                week = int(match.group(1))
+                session = int(match.group(2))
+                
+                if (week, session) in dates:
+                    # Formatta la data in YYYY-MM-DD
+                    workout_date = dates[(week, session)].strftime('%Y-%m-%d')
+                    
+                    # Se è un allenamento importato
+                    if 'imported' in wdata:
+                        # Trova l'allenamento originale
+                        if source == "imported":
+                            import_export_frame = self.controller.import_export
+                            idx = int(wid.split('_')[1])
+                            if idx < len(import_export_frame.imported_workouts):
+                                _, workout = import_export_frame.imported_workouts[idx]
+                                
+                                # Cerca uno step con la data o ne crea uno nuovo
+                                date_step = None
+                                for step in workout.workout_steps:
+                                    if hasattr(step, 'date') and step.date:
+                                        date_step = step
+                                        date_step.date = workout_date
+                                        break
+                                
+                                if not date_step:
+                                    date_step = WorkoutStep(0, "warmup")
+                                    date_step.date = workout_date
+                                    workout.workout_steps.insert(0, date_step)
+                                
+                                updated_workouts.append((week, session, name))
+                    else:
+                        # È un allenamento Garmin, aggiungi alla lista per aggiornare
+                        updated_workouts.append((week, session, name))
+                        
+                        # Se l'allenamento è caricato nell'editor, aggiorna la data
+                        if self.current_workout and hasattr(self, 'current_workout_id') and self.current_workout_id == wid:
+                            self.date_var.set(workout_date)
+                            
+                            # Aggiorna anche lo step della data
+                            date_step = None
+                            for step in self.current_workout.workout_steps:
+                                if hasattr(step, 'date') and step.date:
+                                    date_step = step
+                                    date_step.date = workout_date
+                                    break
+                            
+                            if not date_step:
+                                date_step = WorkoutStep(0, "warmup")
+                                date_step.date = workout_date
+                                self.current_workout.workout_steps.insert(0, date_step)
+                                
+                            # Aggiorna la lista degli step
+                            self.update_steps_list()
+        
+        # Mostra un messaggio di conferma
+        if updated_workouts:
+            # Formatta il messaggio
+            message = f"Pianificate le date per {len(updated_workouts)} allenamenti."
+            
+            # Se ci sono più di 3 allenamenti, mostra solo i primi 3
+            if len(updated_workouts) > 3:
+                message += "\n\nEsempi:"
+                for i in range(3):
+                    week, session, name = updated_workouts[i]
+                    date = dates[(week, session)].strftime('%d/%m/%Y')
+                    message += f"\n- {name}: {date}"
+                message += f"\n... e altri {len(updated_workouts) - 3} allenamenti"
+            else:
+                message += "\n"
+                for week, session, name in updated_workouts:
+                    date = dates[(week, session)].strftime('%d/%m/%Y')
+                    message += f"\n- {name}: {date}"
+            
+            show_info("Pianificazione completata", message, parent=self)
+        else:
+            show_warning("Nessun allenamento pianificato", 
+                       "Non è stato possibile pianificare alcun allenamento", 
+                       parent=self)
+
+    def clear_workout_dates(self):
+        """Cancella le date degli allenamenti."""
+        # Chiedi conferma
+        if not ask_yes_no("Conferma", 
+                       "Sei sicuro di voler cancellare tutte le date degli allenamenti?", 
+                       parent=self):
+            return
+        
+        # Ottieni la lista degli allenamenti
+        source = self.source_var.get()
+        workouts_to_clear = []
+        
+        if source == "garmin":
+            # Usa gli allenamenti da Garmin
+            for wid, wdata in self.workouts:
+                if isinstance(wdata, dict):
+                    workouts_to_clear.append((wid, wdata))
+        else:  # source == "imported"
+            # Usa gli allenamenti importati
+            import_export_frame = self.controller.import_export
+            for i, (name, workout) in enumerate(import_export_frame.imported_workouts):
+                workout_id = f"imported_{i}"
+                # Crea un dict simile agli allenamenti Garmin
+                wdata = {
+                    'workoutId': workout_id,
+                    'workoutName': name,
+                    'sportType': {'sportTypeKey': workout.sport_type},
+                    'description': workout.description,
+                    'imported': True,
+                    'workout': workout  # Aggiungiamo l'oggetto workout per semplicità
+                }
+                workouts_to_clear.append((workout_id, wdata))
+        
+        if not workouts_to_clear:
+            show_error("Errore", "Non ci sono allenamenti da modificare", parent=self)
+            return
+        
+        # Conta gli allenamenti modificati
+        cleared_count = 0
+        
+        for wid, wdata in workouts_to_clear:
+            # Se è un allenamento importato
+            if 'imported' in wdata and 'workout' in wdata:
+                workout = wdata['workout']
+                
+                # Cerca uno step con la data
+                date_steps = []
+                for i, step in enumerate(workout.workout_steps):
+                    if hasattr(step, 'date') and step.date:
+                        date_steps.append(i)
+                
+                # Rimuovi gli step della data (dall'ultimo al primo per non alterare gli indici)
+                for i in sorted(date_steps, reverse=True):
+                    del workout.workout_steps[i]
+                    cleared_count += 1
+            
+            # Se l'allenamento è caricato nell'editor, aggiorna la data
+            if self.current_workout and hasattr(self, 'current_workout_id') and self.current_workout_id == wid:
+                self.date_var.set("")
+                
+                # Rimuovi anche lo step della data
+                date_steps = []
+                for i, step in enumerate(self.current_workout.workout_steps):
+                    if hasattr(step, 'date') and step.date:
+                        date_steps.append(i)
+                
+                # Rimuovi gli step della data (dall'ultimo al primo per non alterare gli indici)
+                for i in sorted(date_steps, reverse=True):
+                    del self.current_workout.workout_steps[i]
+                    cleared_count += 1
+                
+                # Aggiorna la lista degli step
+                self.update_steps_list()
+        
+        # Mostra un messaggio di conferma
+        if cleared_count > 0:
+            show_info("Date cancellate", 
+                   f"Cancellate le date di {cleared_count} allenamenti", 
+                   parent=self)
+        else:
+            show_info("Nessuna data trovata", 
+                   "Non sono state trovate date da cancellare", 
+                   parent=self)
+
+
     def create_widgets(self):
         """Crea i widget del frame."""
         # Frame principale
@@ -76,6 +406,52 @@ class WorkoutEditorFrame(ttk.Frame):
         right_frame = ttk.Frame(paned, padding=5)
         paned.add(right_frame, weight=3)
         
+        # Frame per la configurazione della pianificazione
+        planning_frame = ttk.LabelFrame(right_frame, text="Configurazione Pianificazione")
+        planning_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Nome atleta
+        athlete_frame = ttk.Frame(planning_frame)
+        athlete_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        ttk.Label(athlete_frame, text="Nome Atleta:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        self.athlete_name_var = tk.StringVar(value=self.config.get('athlete_name', ''))
+        athlete_entry = ttk.Entry(athlete_frame, textvariable=self.athlete_name_var, width=30)
+        athlete_entry.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        # Data gara
+        race_frame = ttk.Frame(planning_frame)
+        race_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(race_frame, text="Data Gara:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        self.race_day_var = tk.StringVar(value=self.config.get('planning.race_day', ''))
+        race_entry = ttk.Entry(race_frame, textvariable=self.race_day_var, width=15)
+        race_entry.grid(row=0, column=1, sticky=tk.W)
+        race_picker = ttk.Button(race_frame, text="Seleziona...", command=self.select_race_day)
+        race_picker.grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
+        create_tooltip(race_entry, "Data della gara nel formato YYYY-MM-DD")
+
+        # Giorni preferiti
+        days_frame = ttk.Frame(planning_frame)
+        days_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        ttk.Label(days_frame, text="Giorni Preferiti:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+
+        # Checkbutton per ogni giorno
+        self.pref_days_vars = []
+        days = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"]
+        preferred_days = self.config.get('planning.preferred_days', [1, 3, 5])
+
+        for i, day in enumerate(days):
+            var = tk.BooleanVar(value=i in preferred_days)
+            cb = ttk.Checkbutton(days_frame, text=day, variable=var)
+            cb.grid(row=0, column=i+1, padx=2)
+            self.pref_days_vars.append(var)
+
+        # Pulsanti per la pianificazione
+        plan_buttons_frame = ttk.Frame(planning_frame)
+        plan_buttons_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        ttk.Button(plan_buttons_frame, text="Pianifica Date", command=self.plan_workout_dates).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(plan_buttons_frame, text="Cancella Date", command=self.clear_workout_dates).pack(side=tk.LEFT)
+        ttk.Button(plan_buttons_frame, text="Salva Configurazione", command=self.save_planning_config).pack(side=tk.RIGHT)
+
         # --- Parte sinistra: Lista degli allenamenti ---
         
         # Frame per selezionare la fonte degli allenamenti
@@ -612,18 +988,43 @@ class WorkoutEditorFrame(ttk.Frame):
             
             # Esporta gli allenamenti
             if export_workouts:
-                # Ottieni il name_prefix dalla configurazione
-                name_prefix = self.config.get('export.name_prefix', '')
-                
-                # Configura l'esportazione
+                # Crea una configurazione personalizzata con i valori correnti dell'interfaccia utente
                 export_config = {
-                    'name_prefix': name_prefix
+                    'name_prefix': self.config.get('planning.name_prefix', '')
                 }
+                
+                # Aggiungi i valori dell'interfaccia utente se disponibili
+                if hasattr(self, 'athlete_name_var'):
+                    export_config['athlete_name'] = self.athlete_name_var.get()
+                else:
+                    export_config['athlete_name'] = self.config.get('athlete_name', '')
+                    
+                if hasattr(self, 'race_day_var'):
+                    race_day = self.race_day_var.get()
+                    if race_day and is_valid_date(race_day):
+                        export_config['race_day'] = race_day
+                    else:
+                        export_config['race_day'] = self.config.get('planning.race_day', '')
+                else:
+                    export_config['race_day'] = self.config.get('planning.race_day', '')
+                    
+                if hasattr(self, 'pref_days_vars'):
+                    preferred_days = []
+                    for i, var in enumerate(self.pref_days_vars):
+                        if var.get():
+                            preferred_days.append(i)
+                        
+                    if preferred_days:
+                        export_config['preferred_days'] = preferred_days
+                    else:
+                        export_config['preferred_days'] = self.config.get('planning.preferred_days', [1, 3, 5])
+                else:
+                    export_config['preferred_days'] = self.config.get('planning.preferred_days', [1, 3, 5])
                 
                 # Importa il servizio YAML
                 from services.yaml_service import YamlService
                 
-                # Esporta gli allenamenti
+                # Esporta gli allenamenti con la configurazione personalizzata
                 YamlService.export_workouts(export_workouts, file_path, export_config)
                 
                 # Mostra messaggio di conferma
@@ -703,20 +1104,23 @@ class WorkoutEditorFrame(ttk.Frame):
                             name, workout = import_export_frame.imported_workouts[index]
                             export_workouts.append((name, workout))
             
+            custom_config = None
+            if hasattr(self, 'athlete_name_var') and hasattr(self, 'race_day_var') and hasattr(self, 'pref_days_vars'):
+                custom_config = {
+                    'athlete_name': self.athlete_name_var.get(),
+                    'name_prefix': self.config.get('planning.name_prefix', ''),
+                    'race_day': self.race_day_var.get(),
+                    'preferred_days': [i for i, var in enumerate(self.pref_days_vars) if var.get()]
+                }
+            
             # Esporta gli allenamenti
-            if export_workouts:
-                # Importa il servizio Excel
-                from services.excel_service import ExcelService
-                
-                # Esporta gli allenamenti
-                ExcelService.export_workouts(export_workouts, file_path)
-                
-                # Mostra messaggio di conferma
-                show_info("Esportazione completata", 
-                       f"{len(export_workouts)} allenamenti esportati in {file_path}", 
-                       parent=self)
-            else:
-                show_warning("Attenzione", "Nessun allenamento da esportare", parent=self)
+            from services.excel_service import ExcelService
+            ExcelService.export_workouts(export_workouts, file_path, custom_config)
+            
+            # Mostra messaggio di conferma
+            show_info("Esportazione completata", 
+                   f"{len(export_workouts)} allenamenti esportati in {file_path}", 
+                   parent=self)
             
         except Exception as e:
             logging.error(f"Errore nell'esportazione degli allenamenti: {str(e)}")
