@@ -28,7 +28,9 @@ class Target:
         self.to_value = to_value
         self.from_value = from_value
         self.zone = zone
-        self.target_zone_name = None  # Nuovo attributo per memorizzare il nome della zona
+        self.target_zone_name = None  # Nome della zona
+        self.original_to_value = to_value  # Valore originale prima delle correzioni
+        self.original_from_value = from_value  # Valore originale prima delle correzioni
     
     def to_dict(self) -> Dict[str, Any]:
         """

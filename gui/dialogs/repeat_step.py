@@ -207,107 +207,122 @@ class RepeatStepDialog(tk.Toplevel):
             target = "Nessun target"
             
             if step.target and step.target.target != "no.target":
-                # Otteniamo la configurazione
-                app_config = get_config()
-                
-                if step.target.target == "pace.zone":
-                    # Converti da m/s a min/km
-                    from_value = step.target.from_value
-                    to_value = step.target.to_value
+                # Verifica se esiste il nome della zona
+                if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                    # Usa il nome della zona se disponibile
+                    zone_name = step.target.target_zone_name
                     
-                    if from_value and to_value:
-                        # ms a mm:ss/km
-                        min_pace_secs = int(1000 / from_value)
-                        max_pace_secs = int(1000 / to_value)
-                        
-                        min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
-                        max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
-                        
-                        # Cerca la zona corrispondente
-                        paces = app_config.get(f'sports.{self.sport_type}.paces', {})
-                        zone_name = None
-                        
-                        for name, pace_range in paces.items():
-                            if '-' in pace_range:
-                                pace_min, pace_max = pace_range.split('-')
-                                if pace_min.strip() == min_pace and pace_max.strip() == max_pace:
-                                    zone_name = name
-                                    break
-                            elif pace_range == min_pace and pace_range == max_pace:
-                                zone_name = name
-                                break
-                        
-                        if zone_name:
-                            target = f"Zona {zone_name}"
-                        else:
-                            target = f"Passo {min_pace}-{max_pace} min/km"
+                    # Distingui i diversi tipi di zone
+                    if step.target.target == "pace.zone":
+                        target = f"Zona {zone_name}"
+                    elif step.target.target == "heart.rate.zone":
+                        target = f"Zona FC {zone_name}"
+                    elif step.target.target == "power.zone":
+                        target = f"Zona Potenza {zone_name}"
+                    else:
+                        target = f"Zona {zone_name}"
+                else:
+                    # Otteniamo la configurazione
+                    app_config = get_config()
                     
-                elif step.target.target == "heart.rate.zone":
-                    from_value = step.target.from_value
-                    to_value = step.target.to_value
-                    
-                    if from_value and to_value:
-                        # Cerca la zona corrispondente
-                        heart_rates = app_config.get('heart_rates', {})
-                        zone_name = None
+                    if step.target.target == "pace.zone":
+                        # Converti da m/s a min/km
+                        from_value = step.target.from_value
+                        to_value = step.target.to_value
                         
-                        for name, hr_range in heart_rates.items():
-                            if name.endswith('_HR'):
-                                # Calcola valori effettivi usando max_hr
-                                max_hr = heart_rates.get('max_hr', 180)
-                                
-                                if '-' in hr_range and 'max_hr' in hr_range:
-                                    # Formato: 62-76% max_hr
-                                    parts = hr_range.split('-')
-                                    min_percent = float(parts[0])
-                                    max_percent = float(parts[1].split('%')[0])
-                                    hr_min = int(min_percent * max_hr / 100)
-                                    hr_max = int(max_percent * max_hr / 100)
-                                    
-                                    if hr_min <= from_value <= hr_max and hr_min <= to_value <= hr_max:
+                        if from_value and to_value:
+                            # ms a mm:ss/km
+                            min_pace_secs = int(1000 / from_value)
+                            max_pace_secs = int(1000 / to_value)
+                            
+                            min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
+                            max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
+                            
+                            # Cerca la zona corrispondente
+                            paces = app_config.get(f'sports.{self.sport_type}.paces', {})
+                            zone_name = None
+                            
+                            for name, pace_range in paces.items():
+                                if '-' in pace_range:
+                                    pace_min, pace_max = pace_range.split('-')
+                                    if pace_min.strip() == min_pace and pace_max.strip() == max_pace:
                                         zone_name = name
                                         break
-                        
-                        if zone_name:
-                            target = f"Zona {zone_name}"
-                        else:
-                            target = f"FC {from_value}-{to_value} bpm"
-                    
-                elif step.target.target == "power.zone":
-                    from_value = step.target.from_value
-                    to_value = step.target.to_value
-                    
-                    if from_value and to_value:
-                        # Cerca la zona corrispondente
-                        power_values = app_config.get('sports.cycling.power_values', {})
-                        zone_name = None
-                        
-                        for name, power_range in power_values.items():
-                            if '-' in power_range:
-                                power_min, power_max = power_range.split('-')
-                                if int(power_min) == from_value and int(power_max) == to_value:
+                                elif pace_range == min_pace and pace_range == max_pace:
                                     zone_name = name
                                     break
-                            elif power_range.startswith('<'):
-                                power_val = int(power_range[1:])
-                                if from_value == 0 and to_value == power_val:
-                                    zone_name = name
-                                    break
-                            elif power_range.endswith('+'):
-                                power_val = int(power_range[:-1])
-                                if from_value == power_val and to_value == 9999:
-                                    zone_name = name
-                                    break
+                            
+                            if zone_name:
+                                target = f"Zona {zone_name}"
                             else:
-                                power_val = int(power_range)
-                                if from_value == power_val and to_value == power_val:
-                                    zone_name = name
-                                    break
+                                target = f"Passo {min_pace}-{max_pace} min/km"
                         
-                        if zone_name:
-                            target = f"Zona {zone_name}"
-                        else:
-                            target = f"Potenza {from_value}-{to_value} W"
+                    elif step.target.target == "heart.rate.zone":
+                        from_value = step.target.from_value
+                        to_value = step.target.to_value
+                        
+                        if from_value and to_value:
+                            # Cerca la zona corrispondente
+                            heart_rates = app_config.get('heart_rates', {})
+                            zone_name = None
+                            
+                            for name, hr_range in heart_rates.items():
+                                if name.endswith('_HR'):
+                                    # Calcola valori effettivi usando max_hr
+                                    max_hr = heart_rates.get('max_hr', 180)
+                                    
+                                    if '-' in hr_range and 'max_hr' in hr_range:
+                                        # Formato: 62-76% max_hr
+                                        parts = hr_range.split('-')
+                                        min_percent = float(parts[0])
+                                        max_percent = float(parts[1].split('%')[0])
+                                        hr_min = int(min_percent * max_hr / 100)
+                                        hr_max = int(max_percent * max_hr / 100)
+                                        
+                                        if hr_min <= from_value <= hr_max and hr_min <= to_value <= hr_max:
+                                            zone_name = name
+                                            break
+                            
+                            if zone_name:
+                                target = f"Zona {zone_name}"
+                            else:
+                                target = f"FC {from_value}-{to_value} bpm"
+                        
+                    elif step.target.target == "power.zone":
+                        from_value = step.target.from_value
+                        to_value = step.target.to_value
+                        
+                        if from_value and to_value:
+                            # Cerca la zona corrispondente
+                            power_values = app_config.get('sports.cycling.power_values', {})
+                            zone_name = None
+                            
+                            for name, power_range in power_values.items():
+                                if '-' in power_range:
+                                    power_min, power_max = power_range.split('-')
+                                    if int(power_min) == from_value and int(power_max) == to_value:
+                                        zone_name = name
+                                        break
+                                elif power_range.startswith('<'):
+                                    power_val = int(power_range[1:])
+                                    if from_value == 0 and to_value == power_val:
+                                        zone_name = name
+                                        break
+                                elif power_range.endswith('+'):
+                                    power_val = int(power_range[:-1])
+                                    if from_value == power_val and to_value == 9999:
+                                        zone_name = name
+                                        break
+                                else:
+                                    power_val = int(power_range)
+                                    if from_value == power_val and to_value == power_val:
+                                        zone_name = name
+                                        break
+                            
+                            if zone_name:
+                                target = f"Zona {zone_name}"
+                            else:
+                                target = f"Potenza {from_value}-{to_value} W"
             
             # Aggiungi lo step alla lista
             self.steps_list.insert("", "end", values=(step_type, value, target), tags=(str(i),))
@@ -459,7 +474,7 @@ class RepeatStepDialog(tk.Toplevel):
         """
         # Valida il numero di ripetizioni
         try:
-            iterations = int(self.iterations_var.get())
+            iterations = int(self.iterations_var.get())  # Assicuriamoci che sia un intero
             
             if iterations <= 0:
                 show_error("Errore", "Il numero di ripetizioni deve essere maggiore di zero", parent=self)
@@ -483,7 +498,7 @@ class RepeatStepDialog(tk.Toplevel):
             return
         
         # Ottieni i valori
-        iterations = int(self.iterations_var.get())
+        iterations = int(self.iterations_var.get())  # Assicurati che sia un intero
         
         # Crea o aggiorna lo step
         if self.repeat_step:

@@ -252,7 +252,7 @@ class GarminService:
             for segment in segments:
                 for step_data in segment.get('workoutSteps', []):
                     # Importa lo step
-                    step = self.import_step(step_data)
+                    step = self.import_step(step_data, sport_type)  # Passa il tipo di sport qui
                     if step:
                         workout.add_step(step)
             
@@ -262,12 +262,13 @@ class GarminService:
             logging.error(f"Errore nell'importazione dell'allenamento: {str(e)}")
             return None
     
-    def import_step(self, step_data: Dict[str, Any]) -> Optional[WorkoutStep]:
+    def import_step(self, step_data: Dict[str, Any], parent_sport_type: str = 'running') -> Optional[WorkoutStep]:
         """
         Importa uno step da dati di Garmin Connect.
         
         Args:
             step_data: Dati dello step
+            parent_sport_type: Tipo di sport dell'allenamento genitore
             
         Returns:
             Step importato o None se fallisce
@@ -288,13 +289,20 @@ class GarminService:
             # Estrai l'ordine
             order = step_data.get('stepOrder', 0)
             
+            # Assicurati che il numero di ripetizioni sia un intero
+            if step_type == 'repeat' and end_condition == 'iterations' and isinstance(end_condition_value, float):
+                end_condition_value = int(end_condition_value)
+            
             # Crea lo step
             step = WorkoutStep(order, step_type, description, end_condition, end_condition_value)
+            
+            # Assicuriamoci che lo step abbia il tipo di sport corretto
+            step.sport_type = parent_sport_type
             
             # Se è un repeat, aggiungi gli step figli
             if step_type == 'repeat' and 'workoutSteps' in step_data:
                 for child_data in step_data['workoutSteps']:
-                    child_step = self.import_step(child_data)
+                    child_step = self.import_step(child_data, parent_sport_type)
                     if child_step:
                         step.add_step(child_step)
             else:
@@ -313,28 +321,33 @@ class GarminService:
                     
                     target = Target(target_type, target_value_one, target_value_two, zone_number)
                     
+                    # Salva i valori originali prima di eventuali modifiche
+                    target.original_from_value = target_value_two
+                    target.original_to_value = target_value_one
+                    
                     # Identifica il nome della zona in base ai valori
                     from config import get_config
                     config = get_config()
                     
                     if target_type == 'pace.zone' and target_value_one is not None and target_value_two is not None:
                         # Ottieni le zone di passo per questo sport
-                        sport_type = getattr(step, 'sport_type', 'running')
+                        sport_type = step.sport_type  # Usa lo sport_type impostato sopra
                         paces = config.get(f'sports.{sport_type}.paces', {})
                         
                         logging.info(f"Sport type: {sport_type}")
                         logging.info(f"Zone configurate: {paces}")
                         
-                        # Ottieni i margini per questo sport
+                        # Ottieni i margini dal file di configurazione
                         margins = config.get(f'sports.{sport_type}.margins', {})
-                        faster_margin = margins.get('faster', '0:02')
-                        slower_margin = margins.get('slower', '0:02')
+                        # Non usare valori di default hardcoded, lascia che config.get restituisca il valore di default
+                        faster_margin = margins.get('faster')
+                        slower_margin = margins.get('slower')
                         
                         logging.info(f"Margini: faster={faster_margin}, slower={slower_margin}")
                         
                         # Converti i margini in secondi
                         def pace_to_seconds(pace):
-                            if ':' in pace:
+                            if pace and ':' in pace:
                                 mins, secs = pace.split(':')
                                 return int(mins) * 60 + int(secs)
                             return 0
@@ -396,7 +409,7 @@ class GarminService:
                                 logging.info(f"  Zona {zone_name}: {pace_value}, centro: {seconds_to_pace(zone_central_secs)}")
                             
                             # Verifica la corrispondenza con tolleranza
-                            tolerance = 5  # 5 secondi di tolleranza
+                            tolerance = 15  # Tolleranza in secondi
                             diff = abs(central_pace_secs - zone_central_secs)
                             logging.info(f"  Differenza: {diff}s (tolleranza: {tolerance}s)")
                             
@@ -417,17 +430,17 @@ class GarminService:
                         
                         logging.info(f"Valori HR: min={min_hr}, max={max_hr}")
                         
-                        # Ottieni i margini
+                        # Ottieni i margini dalla configurazione
                         heart_rates = config.get('heart_rates', {})
                         hr_margins = config.get('hr_margins', {})
-                        hr_up = hr_margins.get('hr_up', 5)
-                        hr_down = hr_margins.get('hr_down', 5)
+                        hr_up = hr_margins.get('hr_up')
+                        hr_down = hr_margins.get('hr_down')
                         
                         logging.info(f"Margini HR: up={hr_up}, down={hr_down}")
                         
                         # Rimuovi i margini per trovare il valore centrale
-                        adjusted_min_hr = min_hr + hr_down
-                        adjusted_max_hr = max_hr - hr_up
+                        adjusted_min_hr = min_hr + hr_down if hr_down else min_hr
+                        adjusted_max_hr = max_hr - hr_up if hr_up else max_hr
                         central_hr = (adjusted_min_hr + adjusted_max_hr) // 2
                         
                         logging.info(f"HR min corretto: {adjusted_min_hr}")
@@ -463,7 +476,7 @@ class GarminService:
                                         continue
                                 
                                 # Verifica con tolleranza
-                                tolerance = 5  # 5 bpm di tolleranza
+                                tolerance = 10  # Tolleranza in bpm
                                 diff = abs(central_hr - zone_central_hr)
                                 logging.info(f"  Differenza: {diff} (tolleranza: {tolerance})")
                                 
@@ -481,17 +494,17 @@ class GarminService:
                         
                         logging.info(f"Valori Power: min={min_power}, max={max_power}")
                         
-                        # Ottieni i margini
+                        # Ottieni i margini dalla configurazione
                         power_values = config.get('sports.cycling.power_values', {})
                         margins = config.get('sports.cycling.margins', {})
-                        power_up = margins.get('power_up', 10)
-                        power_down = margins.get('power_down', 10)
+                        power_up = margins.get('power_up')
+                        power_down = margins.get('power_down')
                         
                         logging.info(f"Margini Power: up={power_up}, down={power_down}")
                         
                         # Rimuovi i margini per trovare il valore centrale
-                        adjusted_min_power = min_power + power_down
-                        adjusted_max_power = max_power - power_up
+                        adjusted_min_power = min_power + power_down if power_down else min_power
+                        adjusted_max_power = max_power - power_up if power_up else max_power
                         central_power = (adjusted_min_power + adjusted_max_power) // 2
                         
                         logging.info(f"Power min corretto: {adjusted_min_power}")
@@ -529,7 +542,7 @@ class GarminService:
                                     continue
                             
                             # Verifica con tolleranza
-                            tolerance = 10  # 10 watt di tolleranza
+                            tolerance = 15  # Tolleranza in watt
                             diff = abs(central_power - zone_central_power)
                             logging.info(f"  Differenza: {diff} (tolleranza: {tolerance})")
                             
@@ -545,6 +558,10 @@ class GarminService:
                         logging.info(f"Target zone name assegnato: {target.target_zone_name}")
                     else:
                         logging.info("Nessun target_zone_name assegnato!")
+                    
+                    # Ripristina i valori originali, in modo che vengano mostrati correttamente nell'interfaccia
+                    target.from_value = target.original_from_value
+                    target.to_value = target.original_to_value
                     
                     step.target = target
             
