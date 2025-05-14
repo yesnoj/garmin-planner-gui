@@ -715,6 +715,10 @@ class ImportExportFrame(ttk.Frame):
             # Esporta gli allenamenti
             YamlService.export_workouts(selected_workouts, file_path, config)
             
+
+            # Salva la configurazione
+            self.config.save()
+
             # Mostra messaggio di conferma
             show_info("Esportazione completata", 
                    f"Esportati {len(selected_workouts)} allenamenti", 
@@ -769,6 +773,9 @@ class ImportExportFrame(ttk.Frame):
         try:
             # Esporta gli allenamenti
             ExcelService.export_workouts(selected_workouts, file_path)
+            
+            # Salva la configurazione
+            self.config.save()
             
             # Mostra messaggio di conferma
             show_info("Esportazione completata", 

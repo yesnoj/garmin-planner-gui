@@ -302,6 +302,8 @@ class WorkoutEditorFrame(ttk.Frame):
             show_warning("Nessun allenamento pianificato", 
                        "Non è stato possibile pianificare alcun allenamento", 
                        parent=self)
+        # Aggiorna la lista degli allenamenti
+        self.update_workout_list()
 
     def clear_workout_dates(self):
         """Cancella le date degli allenamenti."""
@@ -311,71 +313,64 @@ class WorkoutEditorFrame(ttk.Frame):
                        parent=self):
             return
         
-        # Ottieni la lista degli allenamenti
+        # Determina la fonte degli allenamenti
         source = self.source_var.get()
-        workouts_to_clear = []
+        cleared_count = 0
         
         if source == "garmin":
             # Usa gli allenamenti da Garmin
-            for wid, wdata in self.workouts:
+            for i, (wid, wdata) in enumerate(self.workouts):
                 if isinstance(wdata, dict):
-                    workouts_to_clear.append((wid, wdata))
+                    # Cancella il campo 'date' nel dizionario
+                    if 'date' in wdata:
+                        wdata['date'] = ""
+                        cleared_count += 1
+                    
+                    # Aggiorna l'elemento nella lista workouts
+                    self.workouts[i] = (wid, wdata)
         else:  # source == "imported"
             # Usa gli allenamenti importati
             import_export_frame = self.controller.import_export
-            for i, (name, workout) in enumerate(import_export_frame.imported_workouts):
-                workout_id = f"imported_{i}"
-                # Crea un dict simile agli allenamenti Garmin
-                wdata = {
-                    'workoutId': workout_id,
-                    'workoutName': name,
-                    'sportType': {'sportTypeKey': workout.sport_type},
-                    'description': workout.description,
-                    'imported': True,
-                    'workout': workout  # Aggiungiamo l'oggetto workout per semplicità
-                }
-                workouts_to_clear.append((workout_id, wdata))
-        
-        if not workouts_to_clear:
-            show_error("Errore", "Non ci sono allenamenti da modificare", parent=self)
-            return
-        
-        # Conta gli allenamenti modificati
-        cleared_count = 0
-        
-        for wid, wdata in workouts_to_clear:
-            # Se è un allenamento importato
-            if 'imported' in wdata and 'workout' in wdata:
-                workout = wdata['workout']
-                
-                # Cerca uno step con la data
-                date_steps = []
-                for i, step in enumerate(workout.workout_steps):
-                    if hasattr(step, 'date') and step.date:
-                        date_steps.append(i)
-                
-                # Rimuovi gli step della data (dall'ultimo al primo per non alterare gli indici)
-                for i in sorted(date_steps, reverse=True):
-                    del workout.workout_steps[i]
-                    cleared_count += 1
             
-            # Se l'allenamento è caricato nell'editor, aggiorna la data
-            if self.current_workout and hasattr(self, 'current_workout_id') and self.current_workout_id == wid:
-                self.date_var.set("")
+            if hasattr(import_export_frame, 'imported_workouts'):
+                for i, (name, workout) in enumerate(import_export_frame.imported_workouts):
+                    # Cerca uno step con la data
+                    date_steps = []
+                    for j, step in enumerate(workout.workout_steps):
+                        if hasattr(step, 'date') and step.date:
+                            date_steps.append(j)
+                    
+                    # Rimuovi gli step della data
+                    for j in sorted(date_steps, reverse=True):
+                        del workout.workout_steps[j]
+                        cleared_count += 1
                 
-                # Rimuovi anche lo step della data
-                date_steps = []
-                for i, step in enumerate(self.current_workout.workout_steps):
-                    if hasattr(step, 'date') and step.date:
-                        date_steps.append(i)
-                
-                # Rimuovi gli step della data (dall'ultimo al primo per non alterare gli indici)
+                # Forza il ricaricamento degli allenamenti importati
+                self.imported_workouts = []
+                self.load_imported_workouts()
+        
+        # Se l'allenamento è caricato nell'editor, aggiorna la data
+        if self.current_workout:
+            # Cerca e rimuovi gli step della data
+            date_steps = []
+            for i, step in enumerate(self.current_workout.workout_steps):
+                if hasattr(step, 'date') and step.date:
+                    date_steps.append(i)
+            
+            # Rimuovi gli step della data se ce ne sono
+            if date_steps:
                 for i in sorted(date_steps, reverse=True):
                     del self.current_workout.workout_steps[i]
                     cleared_count += 1
                 
+                # Reimposta il campo data
+                self.date_var.set("")
+                
                 # Aggiorna la lista degli step
                 self.update_steps_list()
+                
+                # Segna come modificato
+                self.current_workout_modified = True
         
         # Mostra un messaggio di conferma
         if cleared_count > 0:
@@ -386,6 +381,9 @@ class WorkoutEditorFrame(ttk.Frame):
             show_info("Nessuna data trovata", 
                    "Non sono state trovate date da cancellare", 
                    parent=self)
+
+        # Aggiorna la lista degli allenamenti
+        self.update_workout_list()
 
 
     def create_widgets(self):
@@ -1359,7 +1357,7 @@ class WorkoutEditorFrame(ttk.Frame):
                 workout_data = {
                     'workoutId': f"imported_{idx}",
                     'workoutName': name,
-                    'date': workout_date,
+                    'date': workout_date if workout_date else "",  # Assicurati che sia una stringa vuota se None
                     'sportType': {
                         'sportTypeKey': workout.sport_type
                     },
@@ -1425,16 +1423,23 @@ class WorkoutEditorFrame(ttk.Frame):
                 sport_type = workout_data.get('sportType', {}).get('sportTypeKey', 'running')
                 sport_icon = get_icon_for_sport(sport_type)
                 
-                # Per il conteggio degli step
-                steps = workout_data.get('workoutSegments', [{}])[0].get('workoutSteps', [])
-                step_count = len(steps)
+                # Per il conteggio degli step - ESCLUDIAMO QUELLI CON DATA
+                step_count = 0
+                if 'workoutSegments' in workout_data and workout_data['workoutSegments']:
+                    steps = workout_data.get('workoutSegments', [{}])[0].get('workoutSteps', [])
+                    # Contiamo solo gli step che non hanno data
+                    for step in steps:
+                        if isinstance(step, dict) and not ('date' in step and step['date']):
+                            step_count += 1
+                        elif hasattr(step, 'date') and not step.date:
+                            step_count += 1
                 
                 # Nome dell'allenamento
                 name = workout_data.get('workoutName', '')
                 
                 # Gestione data per dizionari
                 date_display = ""
-                if workout_data.get('date'):
+                if workout_data.get('date') and workout_data.get('date').strip():
                     date_str = workout_data.get('date')
                     # Tenta di formattare se nel formato YYYY-MM-DD
                     try:
@@ -1451,14 +1456,20 @@ class WorkoutEditorFrame(ttk.Frame):
                 # Se è un oggetto Workout
                 sport_type = workout_data.sport_type
                 sport_icon = get_icon_for_sport(sport_type)
-                step_count = len(workout_data.workout_steps)
+                
+                # Conteggio step escludendo quelli con data
+                step_count = 0
+                for step in workout_data.workout_steps:
+                    if not (hasattr(step, 'date') and step.date):
+                        step_count += 1
+                        
                 name = workout_data.workout_name
                 displayed_name = name
                 
                 # Gestione data per oggetti Workout
                 date_display = ""
                 for step in workout_data.workout_steps:
-                    if hasattr(step, 'date') and step.date:
+                    if hasattr(step, 'date') and step.date and step.date.strip():
                         # Converti da YYYY-MM-DD a DD/MM/YYYY
                         try:
                             year, month, day = step.date.split('-')
@@ -1470,7 +1481,7 @@ class WorkoutEditorFrame(ttk.Frame):
             # Aggiungi alla lista
             self.workout_tree.insert("", "end", 
                                    values=(displayed_name, f"{sport_icon} {sport_type}", date_display, step_count), 
-                                   tags=(workout_id,))
+                                   tags=(workout_id,))   
 
     def load_workout(self):
         """Carica l'allenamento selezionato nell'editor."""
