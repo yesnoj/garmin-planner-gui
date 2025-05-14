@@ -50,6 +50,104 @@ class Target:
             
         return result
     
+    def garminconnect_json(self) -> Dict[str, Any]:
+        """
+        Converte il target in formato JSON per Garmin Connect.
+        
+        Returns:
+            Dizionario JSON per l'API di Garmin Connect
+        """
+        # Mappatura dei tipi di target
+        target_types = {
+            "no.target": 1,
+            "power.zone": 2,
+            "cadence.zone": 3,
+            "heart.rate.zone": 4,
+            "speed.zone": 5,
+            "pace.zone": 6  # Metri per secondo
+        }
+        
+        # Se abbiamo un target di tipo pace.zone, dobbiamo assicurarci che i valori to_value e from_value
+        # siano corretti e includano i margini appropriati
+        target_values = self._get_adjusted_target_values()
+        to_value, from_value = target_values
+        
+        return {
+            "targetType": {
+                "workoutTargetTypeId": target_types.get(self.target, 1),
+                "workoutTargetTypeKey": self.target
+            },
+            "targetValueOne": to_value,
+            "targetValueTwo": from_value,
+            "zoneNumber": self.zone
+        }
+
+
+    def _get_adjusted_target_values(self):
+        """
+        Restituisce i valori target eventualmente adattati con i margini.
+        
+        Returns:
+            Tupla (to_value, from_value) con i valori adattati
+        """
+        # Se non è un target di tipo pace, restituisci i valori originali
+        if self.target != "pace.zone":
+            return (self.to_value, self.from_value)
+        
+        # Se i valori sono diversi (intervallo già specificato), restituiscili così come sono
+        if self.to_value != self.from_value and self.to_value is not None and self.from_value is not None:
+            return (self.to_value, self.from_value)
+        
+        # Se abbiamo un solo valore o valori uguali, dobbiamo applicare i margini
+        # Ottieni i margini dalla configurazione
+        from config import get_config
+        config = get_config()
+        
+        # Determina il tipo di sport
+        sport_type = getattr(self, 'sport_type', 'running')  # Default a corsa
+        
+        # Se abbiamo un nome di zona, cerca di identificare lo sport da esso
+        if hasattr(self, 'target_zone_name') and self.target_zone_name:
+            # Cerca in quale configurazione di sport esiste questa zona
+            for sport in ["running", "cycling", "swimming"]:
+                paces = config.get(f'sports.{sport}.paces', {})
+                if self.target_zone_name in paces:
+                    sport_type = sport
+                    break
+        
+        # Ottieni i margini per questo sport
+        margins = config.get(f'sports.{sport_type}.margins', {})
+        faster_margin = margins.get('faster', '0:05')
+        slower_margin = margins.get('slower', '0:05')
+        
+        # Converti i margini in secondi
+        from gui.utils import pace_to_seconds
+        faster_seconds = pace_to_seconds(faster_margin)
+        slower_seconds = pace_to_seconds(slower_margin)
+        
+        # Calcola i valori di passo con i margini
+        # Prendi il valore di base (solitamente to_value)
+        base_pace_ms = self.to_value if self.to_value is not None else self.from_value
+        
+        # Se abbiamo un valore di base, applica i margini
+        if base_pace_ms:
+            # Tempo per km in secondi
+            seconds_per_km = 1000 / base_pace_ms
+            
+            # Applica i margini
+            fast_seconds_per_km = seconds_per_km - faster_seconds
+            slow_seconds_per_km = seconds_per_km + slower_seconds
+            
+            # Converti in m/s (attenzione: più veloce = valore più grande in m/s)
+            fast_pace_ms = 1000 / fast_seconds_per_km if fast_seconds_per_km > 0 else base_pace_ms
+            slow_pace_ms = 1000 / slow_seconds_per_km if slow_seconds_per_km > 0 else base_pace_ms
+            
+            # Valori per Garmin Connect: to_value è il limite superiore, from_value è il limite inferiore
+            return (fast_pace_ms, slow_pace_ms)
+        
+        # Se non abbiamo abbastanza informazioni, restituisci i valori originali
+        return (self.to_value, self.from_value)
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Target':
         """
@@ -149,6 +247,169 @@ class WorkoutStep:
         
         return data
     
+    def garminconnect_json(self) -> Dict[str, Any]:
+        """
+        Converte lo step in formato JSON per Garmin Connect.
+        
+        Returns:
+            Dizionario JSON per l'API di Garmin Connect
+        """
+        # Mappatura dei tipi di step
+        step_types = {
+            "warmup": 1,
+            "cooldown": 2,
+            "interval": 3,
+            "recovery": 4,
+            "rest": 5,
+            "repeat": 6,
+            "other": 7
+        }
+        
+        # Mappatura delle condizioni di fine
+        end_conditions = {
+            "lap.button": 1,
+            "time": 2,
+            "distance": 3,
+            "iterations": 7
+        }
+        
+        # Determina se si tratta di un gruppo di ripetizioni o di uno step normale
+        if self.step_type == "repeat":
+            # JSON per un gruppo di ripetizioni
+            step_json = {
+                "type": "RepeatGroupDTO",
+                "stepId": None,
+                "stepOrder": self.order,
+                "childStepId": 1,  # Valore fisso per i gruppi di ripetizioni
+                "stepType": {
+                    "stepTypeId": step_types.get(self.step_type, 7),
+                    "stepTypeKey": self.step_type
+                },
+                "endCondition": {
+                    "conditionTypeKey": self.end_condition,
+                    "conditionTypeId": end_conditions.get(self.end_condition, 1)
+                },
+                "endConditionValue": self._parse_end_condition_value(),
+                "smartRepeat": True,
+                "numberOfIterations": self.end_condition_value,
+                "workoutSteps": [step.garminconnect_json() for step in self.workout_steps]
+            }
+        else:
+            # JSON per uno step normale
+            step_json = {
+                "type": "ExecutableStepDTO",
+                "stepId": None,
+                "stepOrder": self.order,
+                "childStepId": None,
+                "stepType": {
+                    "stepTypeId": step_types.get(self.step_type, 7),
+                    "stepTypeKey": self.step_type
+                },
+                "endCondition": {
+                    "conditionTypeKey": self.end_condition,
+                    "conditionTypeId": end_conditions.get(self.end_condition, 1)
+                },
+                "endConditionValue": self._parse_end_condition_value(),
+                "description": self.description or "",
+                "preferredEndConditionUnit": self._get_end_condition_unit(),
+                "endConditionCompare": None,
+                "endConditionZone": None
+            }
+            
+            # Aggiungi le informazioni sul target
+            if self.target:
+                # Se abbiamo un target di tipo pace.zone, assicuriamoci che abbia informazioni sullo sport
+                if self.target.target == "pace.zone":
+                    # Passa lo sport_type al target
+                    self.target.sport_type = getattr(self, 'sport_type', 'running')
+                    
+                    # Se abbiamo un nome di zona, passiamolo anche al target
+                    if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
+                        # Il nome della zona è già impostato, non facciamo nulla
+                        pass
+                
+                # Aggiungi il JSON del target
+                target_json = self.target.garminconnect_json()
+                step_json.update(target_json)
+        
+        return step_json
+
+    def _parse_end_condition_value(self):
+        """
+        Analizza il valore della condizione di fine e lo converte nel formato appropriato.
+        
+        Returns:
+            Valore processato della condizione di fine
+        """
+        if not self.end_condition_value:
+            return None
+        
+        # Se è una stringa, processa in base al tipo di condizione
+        if isinstance(self.end_condition_value, str):
+            # Distanza nel formato "1000m" o "5km"
+            if self.end_condition == "distance":
+                if "km" in self.end_condition_value:
+                    # Converte da km a m
+                    value = self.end_condition_value.replace("km", "").strip()
+                    try:
+                        return float(value) * 1000
+                    except ValueError:
+                        return 0
+                elif "m" in self.end_condition_value:
+                    # Estrae la distanza in metri
+                    value = self.end_condition_value.replace("m", "").strip()
+                    try:
+                        return float(value)
+                    except ValueError:
+                        return 0
+                else:
+                    # Assume che sia già in metri
+                    try:
+                        return float(self.end_condition_value)
+                    except ValueError:
+                        return 0
+            
+            # Tempo nel formato "mm:ss"
+            elif self.end_condition == "time":
+                if ":" in self.end_condition_value:
+                    # Converte da mm:ss a secondi
+                    parts = self.end_condition_value.split(":")
+                    if len(parts) == 2:
+                        try:
+                            return int(parts[0]) * 60 + int(parts[1])
+                        except ValueError:
+                            return 0
+                else:
+                    # Assume che sia già in secondi
+                    try:
+                        return int(self.end_condition_value)
+                    except ValueError:
+                        return 0
+        
+        # Per le ripetizioni o altri tipi, usa il valore direttamente
+        if self.end_condition == "iterations":
+            try:
+                return int(self.end_condition_value)
+            except (ValueError, TypeError):
+                return 1
+        
+        # Se non è processabile, restituisce il valore originale
+        return self.end_condition_value
+
+    def _get_end_condition_unit(self):
+        """
+        Determina l'unità della condizione di fine.
+        
+        Returns:
+            Dizionario con l'unità o None se non applicabile
+        """
+        if self.end_condition == "distance":
+            if isinstance(self.end_condition_value, str) and "km" in self.end_condition_value:
+                return {"unitKey": "kilometer"}
+            else:
+                return {"unitKey": "meter"}
+        return None
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'WorkoutStep':
         """
@@ -237,6 +498,63 @@ class Workout:
             'description': self.description,
             'workout_steps': [step.to_dict() for step in self.workout_steps]
         }
+
+
+    def garminconnect_json(self) -> Dict[str, Any]:
+        """
+        Converte l'allenamento in formato JSON per Garmin Connect.
+        
+        Returns:
+            Dizionario JSON per l'API di Garmin Connect
+        """
+        # Ottieni gli sport_type_id mappati correttamente
+        sport_type_id = self._get_sport_type_id(self.sport_type)
+        
+        # Filtra gli step di data
+        steps = [s for s in self.workout_steps if not (hasattr(s, 'date') and s.date)]
+        
+        # Formato JSON da inviare a Garmin Connect
+        workout_json = {
+            "sportType": {
+                "sportTypeId": sport_type_id,
+                "sportTypeKey": self.sport_type
+            },
+            "workoutName": self.workout_name,
+            "description": self.description or "",
+            "workoutSegments": [
+                {
+                    "segmentOrder": 1,
+                    "sportType": {
+                        "sportTypeId": sport_type_id,
+                        "sportTypeKey": self.sport_type
+                    },
+                    "workoutSteps": [step.garminconnect_json() for step in steps]
+                }
+            ]
+        }
+        
+        return workout_json
+
+    def _get_sport_type_id(self, sport_type: str) -> int:
+        """
+        Converte il tipo di sport in un ID numerico per Garmin Connect.
+        
+        Args:
+            sport_type: Tipo di sport
+            
+        Returns:
+            ID del tipo di sport
+        """
+        sport_type_ids = {
+            "running": 1,
+            "cycling": 2,
+            "swimming": 5,
+            "fitness_equipment": 4,
+            "other": 3
+        }
+        return sport_type_ids.get(sport_type.lower(), 3)  # Default: other
+
+
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Workout':

@@ -84,9 +84,9 @@ class LoginFrame(ttk.Frame):
             variable=self.save_credentials_var
         )
         self.save_credentials_check.pack(side=tk.LEFT)
-        
+
         create_tooltip(self.save_credentials_check, 
-                     "Salva l'email per il prossimo login.")
+                     "Salva email e password per il prossimo login.")
         
         # Configura il form per espandersi
         form_grid.columnconfigure(1, weight=1)

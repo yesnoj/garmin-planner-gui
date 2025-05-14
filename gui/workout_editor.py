@@ -696,23 +696,22 @@ class WorkoutEditorFrame(ttk.Frame):
                                     callback=on_date_selected)
 
 
-
     def delete_workout(self):
-        """Elimina l'allenamento selezionato."""
-        # Verifica che sia selezionato un allenamento
+        """Elimina gli allenamenti selezionati."""
+        # Verifica che ci siano allenamenti selezionati
         selection = self.workout_tree.selection()
         if not selection:
             return
         
-        # Ottieni l'ID dell'allenamento
-        item = selection[0]
-        workout_id = self.workout_tree.item(item, "tags")[0]
-        workout_name = self.workout_tree.item(item, "values")[0]
-        
         # Chiedi conferma
-        if not ask_yes_no("Conferma eliminazione", 
-                       f"Sei sicuro di voler eliminare l'allenamento '{workout_name}'?", 
-                       parent=self):
+        if len(selection) == 1:
+            workout_id = self.workout_tree.item(selection[0], "tags")[0]
+            workout_name = self.workout_tree.item(selection[0], "values")[0]
+            message = f"Sei sicuro di voler eliminare l'allenamento '{workout_name}'?"
+        else:
+            message = f"Sei sicuro di voler eliminare {len(selection)} allenamenti selezionati?"
+        
+        if not ask_yes_no("Conferma eliminazione", message, parent=self):
             return
         
         # Determina la fonte dell'allenamento
@@ -724,52 +723,88 @@ class WorkoutEditorFrame(ttk.Frame):
                 show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
                 return
             
-            try:
-                # Elimina l'allenamento
-                response = self.garmin_client.delete_workout(workout_id)
+            eliminated = 0
+            local_eliminated = 0
+            workout_ids_to_remove = []
+            
+            for item in selection:
+                workout_id = self.workout_tree.item(item, "tags")[0]
+                workout_name = self.workout_tree.item(item, "values")[0]
                 
-                # Aggiorna la lista degli allenamenti
-                self.refresh_workouts()
+                # Verifica se è un allenamento locale
+                is_local = False
+                for i, (wid, wdata) in enumerate(self.workouts):
+                    if wid == workout_id:
+                        if wdata.get('local', False):
+                            is_local = True
+                            # Rimuovi dalla lista locale
+                            workout_ids_to_remove.append(workout_id)
+                            local_eliminated += 1
+                        break
                 
-                # Mostra messaggio di conferma
-                show_info("Allenamento eliminato", 
-                        f"L'allenamento '{workout_name}' è stato eliminato da Garmin Connect", 
-                        parent=self)
+                if not is_local:
+                    try:
+                        # Elimina l'allenamento da Garmin Connect
+                        response = self.garmin_client.delete_workout(workout_id)
+                        # Se l'eliminazione ha avuto successo, aggiungi l'ID alla lista per la rimozione
+                        if response or response == {}:  # A volte l'API restituisce un dict vuoto in caso di successo
+                            workout_ids_to_remove.append(workout_id)
+                            eliminated += 1
+                    except Exception as e:
+                        logging.error(f"Errore nell'eliminazione dell'allenamento: {str(e)}")
+                        show_error("Errore", 
+                                 f"Impossibile eliminare l'allenamento '{workout_name}': {str(e)}", 
+                                 parent=self)
+            
+            # Rimuovi gli allenamenti dalla lista workouts
+            self.workouts = [(wid, wdata) for wid, wdata in self.workouts if wid not in workout_ids_to_remove]
+            
+            # Aggiorna la lista degli allenamenti
+            self.update_workout_list()
+            
+            # Mostra messaggio di conferma
+            if eliminated > 0 and local_eliminated > 0:
+                show_info("Allenamenti eliminati", 
+                       f"Eliminati {eliminated} allenamenti da Garmin Connect e {local_eliminated} allenamenti locali", 
+                       parent=self)
+            elif eliminated > 0:
+                show_info("Allenamenti eliminati", 
+                       f"Eliminati {eliminated} allenamenti da Garmin Connect", 
+                       parent=self)
+            elif local_eliminated > 0:
+                show_info("Allenamenti eliminati", 
+                       f"Eliminati {local_eliminated} allenamenti locali", 
+                       parent=self)
                 
-            except Exception as e:
-                logging.error(f"Errore nell'eliminazione dell'allenamento: {str(e)}")
-                show_error("Errore", 
-                         f"Impossibile eliminare l'allenamento: {str(e)}", 
-                         parent=self)
         else:  # source == "imported"
-            try:
-                # Trova l'allenamento importato
-                import_export_frame = self.controller.import_export
+            import_export_frame = self.controller.import_export
+            
+            # Salva gli indici degli allenamenti da eliminare
+            indices_to_remove = []
+            
+            for item in selection:
+                workout_id = self.workout_tree.item(item, "tags")[0]
                 
                 if workout_id.startswith("imported_"):
                     index = int(workout_id.split("_")[1])
-                    if index < len(import_export_frame.imported_workouts):
-                        # Rimuovi l'allenamento importato
-                        del import_export_frame.imported_workouts[index]
-                        
-                        # Ricarica la lista degli allenamenti importati
-                        self.load_imported_workouts()
-                        self.update_workout_list()
-                        
-                        # Mostra messaggio di conferma
-                        show_info("Allenamento eliminato", 
-                                f"L'allenamento '{workout_name}' è stato eliminato dalla lista degli importati", 
-                                parent=self)
-                        return
-                
-                # Se arriviamo qui, l'allenamento non è stato trovato
-                show_error("Errore", "Allenamento importato non trovato", parent=self)
+                    indices_to_remove.append(index)
             
-            except Exception as e:
-                logging.error(f"Errore nell'eliminazione dell'allenamento importato: {str(e)}")
-                show_error("Errore", 
-                         f"Impossibile eliminare l'allenamento: {str(e)}", 
-                         parent=self)
+            # Ordina gli indici in ordine decrescente per evitare problemi
+            indices_to_remove.sort(reverse=True)
+            
+            # Elimina gli allenamenti
+            for index in indices_to_remove:
+                if index < len(import_export_frame.imported_workouts):
+                    del import_export_frame.imported_workouts[index]
+            
+            # Ricarica la lista degli allenamenti importati
+            self.load_imported_workouts()
+            self.update_workout_list()
+            
+            # Mostra messaggio di conferma
+            show_info("Allenamenti eliminati", 
+                   f"Eliminati {len(indices_to_remove)} allenamenti dalla lista degli importati", 
+                   parent=self)
 
     def on_workout_selected(self, event):
         """
@@ -942,12 +977,18 @@ class WorkoutEditorFrame(ttk.Frame):
                         date_display = f"{day}/{month}/{year}"
                     except:
                         date_display = date_str
+                        
+                # Verifica se è un allenamento locale
+                is_local = workout_data.get('local', False)
+                name_prefix = "[Local] " if is_local else ""
+                displayed_name = name_prefix + name
             else:
                 # Se è un oggetto Workout
                 sport_type = workout_data.sport_type
                 sport_icon = get_icon_for_sport(sport_type)
                 step_count = len(workout_data.workout_steps)
                 name = workout_data.workout_name
+                displayed_name = name
                 
                 # Gestione data per oggetti Workout
                 date_display = ""
@@ -963,7 +1004,7 @@ class WorkoutEditorFrame(ttk.Frame):
             
             # Aggiungi alla lista
             self.workout_tree.insert("", "end", 
-                                   values=(name, f"{sport_icon} {sport_type}", date_display, step_count), 
+                                   values=(displayed_name, f"{sport_icon} {sport_type}", date_display, step_count), 
                                    tags=(workout_id,))
 
     def load_workout(self):
@@ -1122,27 +1163,41 @@ class WorkoutEditorFrame(ttk.Frame):
             return
         
         try:
+            # Aggiorna lo stato per informare l'utente
+            self.controller.set_status("Aggiornamento allenamenti da Garmin Connect...")
+            
             # Ottieni la lista degli allenamenti
             workouts_data = self.garmin_client.list_workouts()
             
+            # Conserva gli allenamenti locali
+            local_workouts = [(wid, wdata) for wid, wdata in self.workouts if wid.startswith("local_") or (isinstance(wdata, dict) and wdata.get('local', False))]
+            
             # Trasforma in una lista di tuple (id, data)
-            self.workouts = []
+            garmin_workouts = []
             for workout in workouts_data:
                 workout_id = str(workout.get('workoutId', ''))
-                self.workouts.append((workout_id, workout))
+                garmin_workouts.append((workout_id, workout))
+            
+            # Unisci gli allenamenti Garmin con quelli locali
+            self.workouts = garmin_workouts + local_workouts
             
             # Aggiorna la lista solo se siamo in modalità Garmin
             if self.source_var.get() == "garmin":
                 self.update_workout_list()
             
             # Mostra messaggio di conferma
-            self.controller.set_status("Allenamenti aggiornati da Garmin Connect")
+            count_garmin = len(garmin_workouts)
+            count_local = len(local_workouts)
+            
+            msg_status = f"Allenamenti aggiornati da Garmin Connect: {count_garmin} remoti, {count_local} locali"
+            self.controller.set_status(msg_status)
             
         except Exception as e:
             logging.error(f"Errore nell'aggiornamento degli allenamenti: {str(e)}")
             show_error("Errore", 
                      f"Impossibile aggiornare gli allenamenti: {str(e)}", 
                      parent=self)
+            self.controller.set_status("Errore nell'aggiornamento degli allenamenti")
 
 
     def new_workout(self):
@@ -1494,41 +1549,52 @@ class WorkoutEditorFrame(ttk.Frame):
         source = self.source_var.get()
         
         if source == "garmin":
-            # Verifica che ci sia un client Garmin
-            if not self.garmin_client:
-                show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
-                return
-            
-            try:
-                # Aggiorna o crea l'allenamento su Garmin Connect
-                if self.current_workout_id:
+            # Salva nella lista locale senza inviare a Garmin Connect
+            # Assegna un ID temporaneo se non esiste
+            if not self.current_workout_id:
+                self.current_workout_id = f"local_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+                
+            # Aggiorna la lista degli allenamenti
+            workout_found = False
+            for i, (workout_id, workout_data) in enumerate(self.workouts):
+                if workout_id == self.current_workout_id:
                     # Aggiorna l'allenamento esistente
-                    response = self.garmin_client.update_workout(self.current_workout_id, self.current_workout)
-                else:
-                    # Crea un nuovo allenamento
-                    response = self.garmin_client.add_workout(self.current_workout)
-                    
-                    # Ottieni l'ID del nuovo allenamento
-                    if response and 'workoutId' in response:
-                        self.current_workout_id = str(response['workoutId'])
-                
-                # Resetta il flag di modifica
-                self.current_workout_modified = False
-                
-                # Aggiorna la lista degli allenamenti
-                self.refresh_workouts()
-                
-                # Mostra messaggio di conferma
-                show_info("Allenamento salvato", 
-                       f"L'allenamento '{self.current_workout.workout_name}' è stato salvato su Garmin Connect", 
-                       parent=self)
-                
-            except Exception as e:
-                logging.error(f"Errore nel salvataggio dell'allenamento: {str(e)}")
-                show_error("Errore", 
-                         f"Impossibile salvare l'allenamento: {str(e)}", 
-                         parent=self)
-        else:
+                    workout_data_updated = {
+                        'workoutId': self.current_workout_id,
+                        'workoutName': self.current_workout.workout_name,
+                        'sportType': {'sportTypeKey': self.current_workout.sport_type},
+                        'description': self.current_workout.description,
+                        'date': date_str,
+                        'local': True  # Indica che è un allenamento locale
+                    }
+                    self.workouts[i] = (self.current_workout_id, workout_data_updated)
+                    workout_found = True
+                    break
+            
+            if not workout_found:
+                # Aggiungi un nuovo allenamento
+                workout_data = {
+                    'workoutId': self.current_workout_id,
+                    'workoutName': self.current_workout.workout_name,
+                    'sportType': {'sportTypeKey': self.current_workout.sport_type},
+                    'description': self.current_workout.description,
+                    'date': date_str,
+                    'local': True  # Indica che è un allenamento locale
+                }
+                self.workouts.append((self.current_workout_id, workout_data))
+            
+            # Resetta il flag di modifica
+            self.current_workout_modified = False
+            
+            # Aggiorna la lista
+            self.update_workout_list()
+            
+            # Mostra messaggio di conferma
+            show_info("Allenamento salvato", 
+                   f"L'allenamento '{self.current_workout.workout_name}' è stato salvato localmente", 
+                   parent=self)
+            
+        else:  # source == "imported"
             # Salva nella lista degli importati
             import_export_frame = self.controller.import_export
             if not hasattr(import_export_frame, 'imported_workouts'):
@@ -1608,20 +1674,26 @@ class WorkoutEditorFrame(ttk.Frame):
             return
         
         try:
-            # Crea un nuovo allenamento
+            # Crea un nuovo allenamento su Garmin Connect
             response = self.garmin_client.add_workout(self.current_workout)
             
             # Ottieni l'ID del nuovo allenamento
             if response and 'workoutId' in response:
-                workout_id = str(response['workoutId'])
+                new_workout_id = str(response['workoutId'])
                 
-                # Aggiorna l'ID corrente solo se è un nuovo allenamento
-                if not self.current_workout_id:
-                    self.current_workout_id = workout_id
+                # Se era un allenamento locale, rimuovilo dalla lista locale
+                if self.current_workout_id and self.current_workout_id.startswith("local_"):
+                    for i, (workout_id, workout_data) in enumerate(self.workouts):
+                        if workout_id == self.current_workout_id:
+                            self.workouts.pop(i)
+                            break
+                
+                # Aggiorna l'ID corrente
+                self.current_workout_id = new_workout_id
                 
                 # Pianifica l'allenamento se è specificata una data
                 if date_str:
-                    schedule_response = self.garmin_client.schedule_workout(workout_id, date_str)
+                    schedule_response = self.garmin_client.schedule_workout(new_workout_id, date_str)
                     if not schedule_response:
                         logging.warning(f"Impossibile pianificare l'allenamento per la data {date_str}")
                 
@@ -1739,8 +1811,6 @@ class WorkoutEditorFrame(ttk.Frame):
             # È un nuovo allenamento, crea uno vuoto
             self.new_workout()
 
-    # I metodi rimanenti rimangono invariati
-    # ...
 
     def on_login(self, client: GarminClient):
         """
@@ -1756,7 +1826,7 @@ class WorkoutEditorFrame(ttk.Frame):
         
         # Aggiorna la lista degli allenamenti
         self.refresh_workouts()
-    
+        
     def on_logout(self):
         """Gestisce l'evento di logout."""
         self.garmin_client = None
@@ -1786,6 +1856,9 @@ class WorkoutEditorFrame(ttk.Frame):
         self.save_button.config(state="disabled")
         self.send_button.config(state="disabled")
         self.discard_button.config(state="disabled")
+        
+        # Aggiorna lo stato
+        self.controller.set_status("Disconnesso da Garmin Connect")
     
     def on_activate(self):
         """Chiamato quando il frame viene attivato."""
