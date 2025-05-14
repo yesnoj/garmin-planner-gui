@@ -307,11 +307,250 @@ class GarminService:
                     target_value_two = step_data.get('targetValueTwo')
                     zone_number = step_data.get('zoneNumber')
                     
+                    logging.info(f"--- Analisi Target ---")
+                    logging.info(f"Target type: {target_type}")
+                    logging.info(f"Target values: {target_value_one}, {target_value_two}")
+                    
                     target = Target(target_type, target_value_one, target_value_two, zone_number)
+                    
+                    # Identifica il nome della zona in base ai valori
+                    from config import get_config
+                    config = get_config()
+                    
+                    if target_type == 'pace.zone' and target_value_one is not None and target_value_two is not None:
+                        # Ottieni le zone di passo per questo sport
+                        sport_type = getattr(step, 'sport_type', 'running')
+                        paces = config.get(f'sports.{sport_type}.paces', {})
+                        
+                        logging.info(f"Sport type: {sport_type}")
+                        logging.info(f"Zone configurate: {paces}")
+                        
+                        # Ottieni i margini per questo sport
+                        margins = config.get(f'sports.{sport_type}.margins', {})
+                        faster_margin = margins.get('faster', '0:02')
+                        slower_margin = margins.get('slower', '0:02')
+                        
+                        logging.info(f"Margini: faster={faster_margin}, slower={slower_margin}")
+                        
+                        # Converti i margini in secondi
+                        def pace_to_seconds(pace):
+                            if ':' in pace:
+                                mins, secs = pace.split(':')
+                                return int(mins) * 60 + int(secs)
+                            return 0
+                        
+                        def seconds_to_pace(seconds):
+                            mins = seconds // 60
+                            secs = seconds % 60
+                            return f"{mins}:{secs:02d}"
+                        
+                        faster_secs = pace_to_seconds(faster_margin)
+                        slower_secs = pace_to_seconds(slower_margin)
+                        
+                        logging.info(f"Margini in secondi: faster={faster_secs}s, slower={slower_secs}s")
+                        
+                        # Converti i valori target da m/s a secondi/km
+                        # In Garmin, valori più alti in m/s = più veloce
+                        pace_one_secs = int(1000 / target_value_one) if target_value_one > 0 else 0
+                        pace_two_secs = int(1000 / target_value_two) if target_value_two > 0 else 0
+                        
+                        logging.info(f"Valori di passo in secondi/km: {pace_one_secs}s, {pace_two_secs}s")
+                        logging.info(f"Valori di passo formattati: {seconds_to_pace(pace_one_secs)}, {seconds_to_pace(pace_two_secs)}")
+                        
+                        # Determina qual è il più veloce e il più lento
+                        fast_pace_secs = min(pace_one_secs, pace_two_secs)  # Valore più basso = più veloce
+                        slow_pace_secs = max(pace_one_secs, pace_two_secs)  # Valore più alto = più lento
+                        
+                        logging.info(f"Passo più veloce: {seconds_to_pace(fast_pace_secs)}, più lento: {seconds_to_pace(slow_pace_secs)}")
+                        
+                        # Rimuovi i margini per trovare il valore centrale
+                        # Il valore più veloce dovrebbe aumentare (sottrarre i margini)
+                        # Il valore più lento dovrebbe diminuire (aggiungere i margini)
+                        adjusted_fast_pace_secs = fast_pace_secs + faster_secs
+                        adjusted_slow_pace_secs = slow_pace_secs - slower_secs
+                        central_pace_secs = (adjusted_fast_pace_secs + adjusted_slow_pace_secs) // 2
+                        
+                        logging.info(f"Passo veloce corretto: {seconds_to_pace(adjusted_fast_pace_secs)}")
+                        logging.info(f"Passo lento corretto: {seconds_to_pace(adjusted_slow_pace_secs)}")
+                        logging.info(f"Passo centrale: {seconds_to_pace(central_pace_secs)}")
+                        
+                        # Cerca la zona che corrisponde a questo valore centrale
+                        logging.info(f"Ricerca della zona corrispondente...")
+                        
+                        for zone_name, pace_value in paces.items():
+                            # Rimuovi eventuali spazi
+                            pace_value = pace_value.strip()
+                            
+                            # Se è un intervallo, confronta con il centro dell'intervallo
+                            if '-' in pace_value:
+                                min_p, max_p = pace_value.split('-')
+                                min_p = min_p.strip()
+                                max_p = max_p.strip()
+                                min_secs = pace_to_seconds(min_p)
+                                max_secs = pace_to_seconds(max_p)
+                                zone_central_secs = (min_secs + max_secs) // 2
+                                logging.info(f"  Zona {zone_name}: {min_p}-{max_p}, centro: {seconds_to_pace(zone_central_secs)}")
+                            else:
+                                # È un valore singolo
+                                zone_central_secs = pace_to_seconds(pace_value)
+                                logging.info(f"  Zona {zone_name}: {pace_value}, centro: {seconds_to_pace(zone_central_secs)}")
+                            
+                            # Verifica la corrispondenza con tolleranza
+                            tolerance = 5  # 5 secondi di tolleranza
+                            diff = abs(central_pace_secs - zone_central_secs)
+                            logging.info(f"  Differenza: {diff}s (tolleranza: {tolerance}s)")
+                            
+                            if diff <= tolerance:
+                                target.target_zone_name = zone_name
+                                logging.info(f"  MATCH! Zona corrispondente: {zone_name}")
+                                break
+                            else:
+                                logging.info(f"  No match")
+                        
+                        if not hasattr(target, 'target_zone_name') or not target.target_zone_name:
+                            logging.info("Nessuna zona corrispondente trovata!")
+                    
+                    elif target_type == 'heart.rate.zone' and target_value_one is not None and target_value_two is not None:
+                        # Per le zone HR dobbiamo anche determinare qual è il valore minimo e massimo
+                        min_hr = min(target_value_one, target_value_two)
+                        max_hr = max(target_value_one, target_value_two)
+                        
+                        logging.info(f"Valori HR: min={min_hr}, max={max_hr}")
+                        
+                        # Ottieni i margini
+                        heart_rates = config.get('heart_rates', {})
+                        hr_margins = config.get('hr_margins', {})
+                        hr_up = hr_margins.get('hr_up', 5)
+                        hr_down = hr_margins.get('hr_down', 5)
+                        
+                        logging.info(f"Margini HR: up={hr_up}, down={hr_down}")
+                        
+                        # Rimuovi i margini per trovare il valore centrale
+                        adjusted_min_hr = min_hr + hr_down
+                        adjusted_max_hr = max_hr - hr_up
+                        central_hr = (adjusted_min_hr + adjusted_max_hr) // 2
+                        
+                        logging.info(f"HR min corretto: {adjusted_min_hr}")
+                        logging.info(f"HR max corretto: {adjusted_max_hr}")
+                        logging.info(f"HR centrale: {central_hr}")
+                        
+                        # Cerca la zona corrispondente
+                        logging.info(f"Ricerca della zona HR corrispondente...")
+                        
+                        for zone_name, hr_range in heart_rates.items():
+                            if zone_name.endswith('_HR'):
+                                max_hr_config = heart_rates.get('max_hr', 180)
+                                
+                                if '-' in hr_range and 'max_hr' in hr_range:
+                                    # Formato: 62-76% max_hr
+                                    parts = hr_range.split('-')
+                                    min_percent = float(parts[0])
+                                    max_percent = float(parts[1].split('%')[0])
+                                    hr_min = int(min_percent * max_hr_config / 100)
+                                    hr_max = int(max_percent * max_hr_config / 100)
+                                    zone_central_hr = (hr_min + hr_max) // 2
+                                    logging.info(f"  Zona {zone_name}: {hr_min}-{hr_max}, centro: {zone_central_hr}")
+                                else:
+                                    # Valore singolo
+                                    try:
+                                        if 'max_hr' in hr_range:
+                                            percent = float(hr_range.split('%')[0])
+                                            zone_central_hr = int(percent * max_hr_config / 100)
+                                        else:
+                                            zone_central_hr = int(hr_range)
+                                        logging.info(f"  Zona {zone_name}: valore singolo, centro: {zone_central_hr}")
+                                    except (ValueError, TypeError):
+                                        continue
+                                
+                                # Verifica con tolleranza
+                                tolerance = 5  # 5 bpm di tolleranza
+                                diff = abs(central_hr - zone_central_hr)
+                                logging.info(f"  Differenza: {diff} (tolleranza: {tolerance})")
+                                
+                                if diff <= tolerance:
+                                    target.target_zone_name = zone_name
+                                    logging.info(f"  MATCH! Zona corrispondente: {zone_name}")
+                                    break
+                                else:
+                                    logging.info(f"  No match")
+                    
+                    elif target_type == 'power.zone' and target_value_one is not None and target_value_two is not None:
+                        # Per le zone di potenza dobbiamo anche determinare qual è il valore minimo e massimo
+                        min_power = min(target_value_one, target_value_two)
+                        max_power = max(target_value_one, target_value_two)
+                        
+                        logging.info(f"Valori Power: min={min_power}, max={max_power}")
+                        
+                        # Ottieni i margini
+                        power_values = config.get('sports.cycling.power_values', {})
+                        margins = config.get('sports.cycling.margins', {})
+                        power_up = margins.get('power_up', 10)
+                        power_down = margins.get('power_down', 10)
+                        
+                        logging.info(f"Margini Power: up={power_up}, down={power_down}")
+                        
+                        # Rimuovi i margini per trovare il valore centrale
+                        adjusted_min_power = min_power + power_down
+                        adjusted_max_power = max_power - power_up
+                        central_power = (adjusted_min_power + adjusted_max_power) // 2
+                        
+                        logging.info(f"Power min corretto: {adjusted_min_power}")
+                        logging.info(f"Power max corretto: {adjusted_max_power}")
+                        logging.info(f"Power centrale: {central_power}")
+                        
+                        # Cerca la zona corrispondente
+                        logging.info(f"Ricerca della zona Power corrispondente...")
+                        
+                        for zone_name, power_range in power_values.items():
+                            if zone_name == 'ftp':  # Salta FTP, non è una zona
+                                continue
+                            
+                            # Calcola il centro della zona
+                            if '-' in power_range:
+                                min_p, max_p = power_range.split('-')
+                                min_power_zone = int(min_p.strip())
+                                max_power_zone = int(max_p.strip())
+                                zone_central_power = (min_power_zone + max_power_zone) // 2
+                                logging.info(f"  Zona {zone_name}: {min_power_zone}-{max_power_zone}, centro: {zone_central_power}")
+                            elif power_range.startswith('<'):
+                                max_power_zone = int(power_range[1:].strip())
+                                zone_central_power = max_power_zone // 2  # Approssimazione
+                                logging.info(f"  Zona {zone_name}: <{max_power_zone}, centro approx: {zone_central_power}")
+                            elif power_range.endswith('+'):
+                                min_power_zone = int(power_range[:-1].strip())
+                                zone_central_power = min_power_zone + 50  # Approssimazione
+                                logging.info(f"  Zona {zone_name}: {min_power_zone}+, centro approx: {zone_central_power}")
+                            else:
+                                # Valore singolo
+                                try:
+                                    zone_central_power = int(power_range)
+                                    logging.info(f"  Zona {zone_name}: valore singolo {zone_central_power}")
+                                except (ValueError, TypeError):
+                                    continue
+                            
+                            # Verifica con tolleranza
+                            tolerance = 10  # 10 watt di tolleranza
+                            diff = abs(central_power - zone_central_power)
+                            logging.info(f"  Differenza: {diff} (tolleranza: {tolerance})")
+                            
+                            if diff <= tolerance:
+                                target.target_zone_name = zone_name
+                                logging.info(f"  MATCH! Zona corrispondente: {zone_name}")
+                                break
+                            else:
+                                logging.info(f"  No match")
+                    
+                    # Log finale per confermare il nome della zona assegnato
+                    if hasattr(target, 'target_zone_name') and target.target_zone_name:
+                        logging.info(f"Target zone name assegnato: {target.target_zone_name}")
+                    else:
+                        logging.info("Nessun target_zone_name assegnato!")
+                    
                     step.target = target
             
             return step
             
         except Exception as e:
             logging.error(f"Errore nell'importazione dello step: {str(e)}")
+            logging.exception("Stack trace:")
             return None
