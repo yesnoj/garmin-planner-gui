@@ -60,7 +60,7 @@ class WorkoutStepDialog(tk.Toplevel):
         self.description_var = tk.StringVar(value=self.description)
         self.end_condition_var = tk.StringVar(value=self.end_condition)
         
-        # 3. Conversione del tempo da secondi a formato mm:ss per l'interfaccia
+        # Conversione del tempo da secondi a formato mm:ss per l'interfaccia
         if isinstance(self.end_condition_value, (int, float)) and self.end_condition == "time":
             # Converti secondi a mm:ss
             seconds = int(self.end_condition_value)
@@ -125,13 +125,10 @@ class WorkoutStepDialog(tk.Toplevel):
         self.on_step_type_change()
         self.on_end_condition_change()
         self.on_target_type_change()
-
-        # Carica le zone predefinite
-        self.load_predefined_zones()
         
-        # Imposta la zona predefinita corretta se lo step ne ha una
-        if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
-            self.predefined_zone_var.set(self.target.target_zone_name)
+        # Carica le zone predefinite e imposta la zona corretta
+        # Nota: mettiamo un breve ritardo per assicurarci che tutti i widget siano pronti
+        self.after(100, self.initialize_zones)
     
 
     def create_widgets(self):
@@ -290,6 +287,17 @@ class WorkoutStepDialog(tk.Toplevel):
         ttk.Button(buttons_frame, text="OK", command=self.on_ok).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(buttons_frame, text="Annulla", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
     
+    def initialize_zones(self):
+        """Inizializza le zone e imposta la zona corretta."""
+        # Carichiamo prima le zone disponibili
+        self.load_predefined_zones()
+        
+        # Verifichiamo di nuovo che la zona sia impostata correttamente
+        if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
+            self.predefined_zone_var.set(self.target.target_zone_name)
+            # Aggiorniamo i valori min/max in base alla zona
+            self.on_predefined_zone_selected()
+    
     def load_predefined_zones(self):
         """Carica le zone predefinite dalla configurazione."""
         # Pulisci la lista attuale
@@ -327,11 +335,120 @@ class WorkoutStepDialog(tk.Toplevel):
             zone_names = [name for name, _ in zones]
             self.zone_combo['values'] = zone_names
             
-            # Seleziona il primo elemento
-            if zone_names:
-                self.zone_combo.current(0)
-                # Aggiorna i valori min/max
-                self.on_predefined_zone_selected()
+            # Verifica se lo step ha già una zona assegnata
+            if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
+                # Cerca la zona nella lista
+                if self.target.target_zone_name in zone_names:
+                    self.predefined_zone_var.set(self.target.target_zone_name)
+                else:
+                    # Se la zona non è nella lista, imposta la prima
+                    if zone_names:
+                        self.predefined_zone_var.set(zone_names[0])
+            else:
+                # Se non c'è una zona assegnata, cerchiamo di trovare la zona corrispondente
+                # ai valori min/max
+                found_zone = False
+                if target_type == "pace.zone":
+                    # Ottieni i valori correnti
+                    min_pace = self.target_min_var.get()
+                    max_pace = self.target_max_var.get()
+                    
+                    if min_pace and max_pace:
+                        # Cerca la zona corrispondente
+                        for name, pace_range in paces.items():
+                            if '-' in pace_range:
+                                pace_min, pace_max = pace_range.split('-')
+                                pace_min = pace_min.strip()
+                                pace_max = pace_max.strip()
+                                
+                                if pace_min == min_pace and pace_max == max_pace:
+                                    self.predefined_zone_var.set(name)
+                                    found_zone = True
+                                    break
+                            elif pace_range.strip() == min_pace and pace_range.strip() == max_pace:
+                                self.predefined_zone_var.set(name)
+                                found_zone = True
+                                break
+                
+                elif target_type == "heart.rate.zone":
+                    # Ottieni i valori correnti
+                    min_hr = self.target_min_var.get()
+                    max_hr = self.target_max_var.get()
+                    
+                    if min_hr and max_hr:
+                        try:
+                            min_hr_val = int(min_hr)
+                            max_hr_val = int(max_hr)
+                            
+                            # Cerca la zona corrispondente
+                            max_hr_config = heart_rates.get('max_hr', 180)
+                            
+                            for name, hr_range in heart_rates.items():
+                                if name.endswith('_HR'):
+                                    if '-' in hr_range and 'max_hr' in hr_range:
+                                        # Formato: N-N% max_hr
+                                        parts = hr_range.split('-')
+                                        min_percent = float(parts[0])
+                                        max_percent = float(parts[1].split('%')[0])
+                                        
+                                        calculated_min = int(min_percent * max_hr_config / 100)
+                                        calculated_max = int(max_percent * max_hr_config / 100)
+                                        
+                                        # Verifica se i valori calcolati sono simili a quelli attuali
+                                        # con un margine di tolleranza
+                                        if (abs(calculated_min - min_hr_val) <= 2 and 
+                                            abs(calculated_max - max_hr_val) <= 2):
+                                            self.predefined_zone_var.set(name)
+                                            found_zone = True
+                                            break
+                        except (ValueError, TypeError):
+                            pass
+                
+                elif target_type == "power.zone":
+                    # Ottieni i valori correnti
+                    min_power = self.target_min_var.get()
+                    max_power = self.target_max_var.get()
+                    
+                    if min_power and max_power:
+                        try:
+                            min_power_val = int(min_power)
+                            max_power_val = int(max_power)
+                            
+                            # Cerca la zona corrispondente
+                            for name, power_range in power_values.items():
+                                if '-' in power_range:
+                                    power_min, power_max = power_range.split('-')
+                                    if int(power_min) == min_power_val and int(power_max) == max_power_val:
+                                        self.predefined_zone_var.set(name)
+                                        found_zone = True
+                                        break
+                                elif power_range.startswith('<'):
+                                    power_val = int(power_range[1:])
+                                    if min_power_val == 0 and max_power_val == power_val:
+                                        self.predefined_zone_var.set(name)
+                                        found_zone = True
+                                        break
+                                elif power_range.endswith('+'):
+                                    power_val = int(power_range[:-1])
+                                    if min_power_val == power_val and max_power_val == 9999:
+                                        self.predefined_zone_var.set(name)
+                                        found_zone = True
+                                        break
+                                else:
+                                    power_val = int(power_range)
+                                    if min_power_val == power_val and max_power_val == power_val:
+                                        self.predefined_zone_var.set(name)
+                                        found_zone = True
+                                        break
+                        except (ValueError, TypeError):
+                            pass
+                
+                # Se non abbiamo trovato una zona corrispondente, imposta la prima
+                if not found_zone and zone_names:
+                    self.predefined_zone_var.set(zone_names[0])
+                    
+                    # Aggiorna i valori min/max in base alla zona selezionata
+                    self.on_predefined_zone_selected()
                 
     def on_predefined_zone_selected(self, event=None):
         """Handles selection of a predefined zone."""
