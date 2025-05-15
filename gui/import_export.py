@@ -113,6 +113,13 @@ class ImportExportFrame(ttk.Frame):
         
         create_tooltip(excel_export_button, "Esporta allenamenti in un file Excel")
         
+        # Crea esempio Excel
+        excel_example_button = ttk.Button(export_frame, text="Crea Esempio Excel...", 
+                                        command=self.create_excel_example)
+        excel_example_button.pack(fill=tk.X, padx=10, pady=5)
+        
+        create_tooltip(excel_example_button, "Crea un file Excel di esempio che può essere modificato e importato")
+        
         # Esporta in Garmin Connect
         self.garmin_export_button = ttk.Button(export_frame, text="Esporta in Garmin Connect", 
                                              command=self.export_to_garmin,
@@ -218,6 +225,156 @@ class ImportExportFrame(ttk.Frame):
         self.workout_tree.bind("<<TreeviewSelect>>", self.on_workout_selected)
         self.workout_tree.bind("<Double-1>", lambda e: self.show_workout_details())
     
+    def create_excel_example(self):
+        """Crea un file Excel di esempio che può essere modificato e importato."""
+        # Chiedi dove salvare il file
+        file_path = filedialog.asksaveasfilename(
+            parent=self,
+            title="Salva file esempio Excel",
+            filetypes=[("Excel files", "*.xlsx"), ("Tutti i file", "*.*")],
+            defaultextension=".xlsx"
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            from services.excel_service import ExcelService
+            from models.workout import Workout, WorkoutStep, Target
+            
+            # Crea esempi di allenamenti
+            example_workouts = []
+            
+            # Esempio 1: Corsa lunga
+            workout1 = Workout("running", "W1D2 - Corsa lunga", "Corsa lunga a ritmo lento")
+            
+            # Aggiungi step per data
+            date_step = WorkoutStep(0, "warmup")
+            date_step.date = "2025-01-05"  # Esempio di data
+            workout1.add_step(date_step)
+            
+            # Aggiungi step riscaldamento
+            warmup = WorkoutStep(0, "warmup", "Inizia lentamente", "time", 10*60)
+            warmup.target = Target("pace.zone", 2.7, 2.5)  # ~ Z2
+            warmup.target.target_zone_name = "Z2"
+            workout1.add_step(warmup)
+            
+            # Aggiungi step principale
+            main = WorkoutStep(0, "interval", "Mantieni un ritmo costante", "distance", 10000)
+            main.target = Target("pace.zone", 2.9, 2.7)  # ~ Z3
+            main.target.target_zone_name = "Z3"
+            workout1.add_step(main)
+            
+            # Aggiungi step defaticamento
+            cooldown = WorkoutStep(0, "cooldown", "Rallenta gradualmente", "time", 5*60)
+            cooldown.target = Target("pace.zone", 2.5, 2.3)  # ~ Z1
+            cooldown.target.target_zone_name = "Z1"
+            workout1.add_step(cooldown)
+            
+            # Esempio 2: Interval training
+            workout2 = Workout("running", "W1D4 - Interval training", "Allenamento a intervalli ad alta intensità")
+            
+            # Aggiungi step per data
+            date_step = WorkoutStep(0, "warmup")
+            date_step.date = "2025-01-07"  # Esempio di data
+            workout2.add_step(date_step)
+            
+            # Aggiungi step riscaldamento
+            warmup2 = WorkoutStep(0, "warmup", "Riscaldamento", "time", 10*60)
+            warmup2.target = Target("pace.zone", 2.7, 2.5)  # ~ Z2
+            warmup2.target.target_zone_name = "Z2"
+            workout2.add_step(warmup2)
+            
+            # Crea un gruppo di ripetizioni
+            repeat = WorkoutStep(0, "repeat", "", "iterations", 5)
+            
+            # Aggiungi interval ad alta intensità
+            interval = WorkoutStep(0, "interval", "Ad alta intensità", "distance", 400)
+            interval.target = Target("pace.zone", 3.4, 3.2)  # ~ Z4
+            interval.target.target_zone_name = "Z4"
+            repeat.add_step(interval)
+            
+            # Aggiungi recupero
+            recovery = WorkoutStep(0, "recovery", "Recupero attivo", "distance", 200)
+            recovery.target = Target("pace.zone", 2.5, 2.3)  # ~ Z1
+            recovery.target.target_zone_name = "Z1"
+            repeat.add_step(recovery)
+            
+            # Aggiungi il gruppo di ripetizioni all'allenamento
+            workout2.add_step(repeat)
+            
+            # Aggiungi defaticamento
+            cooldown2 = WorkoutStep(0, "cooldown", "Defaticamento", "time", 5*60)
+            cooldown2.target = Target("pace.zone", 2.5, 2.3)  # ~ Z1
+            cooldown2.target.target_zone_name = "Z1"
+            workout2.add_step(cooldown2)
+            
+            # Esempio 3: Allenamento in bici
+            workout3 = Workout("cycling", "W1D5 - Soglia ciclismo", "Allenamento di soglia per ciclismo")
+            
+            # Aggiungi step per data
+            date_step = WorkoutStep(0, "warmup")
+            date_step.date = "2025-01-08"  # Esempio di data
+            workout3.add_step(date_step)
+            
+            # Aggiungi step riscaldamento
+            warmup3 = WorkoutStep(0, "warmup", "Riscaldamento progressivo", "time", 15*60)
+            warmup3.target = Target("power.zone", 175, 125)  # Z1
+            warmup3.target.target_zone_name = "Z1"
+            workout3.add_step(warmup3)
+            
+            # Crea un gruppo di ripetizioni
+            repeat3 = WorkoutStep(0, "repeat", "", "iterations", 3)
+            
+            # Aggiungi interval a soglia
+            interval3 = WorkoutStep(0, "interval", "Intervallo a soglia", "time", 8*60)
+            interval3.target = Target("power.zone", 265, 235)  # threshold
+            interval3.target.target_zone_name = "threshold"
+            repeat3.add_step(interval3)
+            
+            # Aggiungi recupero
+            recovery3 = WorkoutStep(0, "recovery", "Recupero", "time", 4*60)
+            recovery3.target = Target("power.zone", 175, 125)  # Z1
+            recovery3.target.target_zone_name = "Z1"
+            repeat3.add_step(recovery3)
+            
+            # Aggiungi il gruppo di ripetizioni all'allenamento
+            workout3.add_step(repeat3)
+            
+            # Aggiungi defaticamento
+            cooldown3 = WorkoutStep(0, "cooldown", "Defaticamento", "time", 10*60)
+            cooldown3.target = Target("power.zone", 175, 125)  # Z1
+            cooldown3.target.target_zone_name = "Z1"
+            workout3.add_step(cooldown3)
+            
+            # Aggiungi gli allenamenti all'elenco degli esempi
+            example_workouts.extend([
+                ("W1D2 - Corsa lunga", workout1),
+                ("W1D4 - Interval training", workout2),
+                ("W1D5 - Soglia ciclismo", workout3)
+            ])
+            
+            # Esporta gli allenamenti in formato Excel
+            custom_config = {
+                'athlete_name': 'Atleta Esempio',
+                'name_prefix': 'Piano esempio',
+                'race_day': '06/06/2025',  # Formato GG/MM/AAAA
+                'preferred_days': [0, 2, 4]  # Lunedì, Mercoledì, Venerdì
+            }
+            
+            ExcelService.export_workouts(example_workouts, file_path, custom_config)
+            
+            # Mostra messaggio di conferma
+            show_info("Esempio creato", 
+                    f"File Excel di esempio creato con successo in {file_path}", 
+                    parent=self)
+            
+        except Exception as e:
+            logging.error(f"Errore nella creazione del file Excel di esempio: {str(e)}")
+            show_error("Errore", 
+                     f"Impossibile creare il file Excel di esempio: {str(e)}", 
+                     parent=self)
+
     def update_workout_list(self):
         """Aggiorna la lista degli allenamenti disponibili."""
         # Ottieni il filtro
@@ -323,7 +480,7 @@ class ImportExportFrame(ttk.Frame):
         
         ttk.Label(header_frame, text=f"Sport: {workout.sport_type.capitalize()}", 
                 style="Subtitle.TLabel").pack(side=tk.RIGHT)
-    
+
         # Descrizione
         if workout.description:
             desc_frame = ttk.LabelFrame(self.details_content, text="Descrizione")
@@ -351,7 +508,7 @@ class ImportExportFrame(ttk.Frame):
         steps_tree.column("order", width=30)
         steps_tree.column("type", width=80)
         steps_tree.column("condition", width=100)
-        steps_tree.column("value", width=80)
+        steps_tree.column("value", width=120)
         steps_tree.column("description", width=200)
         
         # Scrollbar
@@ -391,7 +548,51 @@ class ImportExportFrame(ttk.Frame):
                 end_condition = "Ripetizioni"
             
             # Valore della condizione
-            end_value = str(step.end_condition_value) if step.end_condition_value else ""
+            end_value = ""
+            if step.end_condition == "time" and step.end_condition_value:
+                # Formatta il tempo in minuti:secondi
+                if isinstance(step.end_condition_value, (int, float)):
+                    seconds = int(step.end_condition_value)
+                    minutes = seconds // 60
+                    seconds = seconds % 60
+                    end_value = f"{minutes}:{seconds:02d} min"
+                else:
+                    end_value = str(step.end_condition_value)
+            elif step.end_condition == "distance" and step.end_condition_value:
+                # Formatta la distanza
+                if isinstance(step.end_condition_value, (int, float)):
+                    if step.end_condition_value >= 1000:
+                        end_value = f"{step.end_condition_value / 1000:.1f} km"
+                    else:
+                        end_value = f"{int(step.end_condition_value)} m"
+                else:
+                    end_value = str(step.end_condition_value)
+            elif step.end_condition == "iterations" and step.end_condition_value:
+                end_value = f"{step.end_condition_value} x"
+            else:
+                end_value = str(step.end_condition_value) if step.end_condition_value else ""
+            
+            # Target
+            if step.target and step.target.target != "no.target":
+                target_text = ""
+                if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                    target_text = f" @ {step.target.target_zone_name}"
+                elif step.target.target == "pace.zone" and step.target.from_value and step.target.to_value:
+                    # Calcola i valori di passo
+                    min_pace_secs = int(1000 / step.target.from_value)
+                    max_pace_secs = int(1000 / step.target.to_value)
+                    
+                    min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
+                    max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
+                    
+                    target_text = f" @ {min_pace}-{max_pace}"
+                elif step.target.target == "heart.rate.zone" and step.target.from_value and step.target.to_value:
+                    target_text = f" @ {step.target.from_value}-{step.target.to_value} bpm"
+                elif step.target.target == "power.zone" and step.target.from_value and step.target.to_value:
+                    target_text = f" @ {step.target.from_value}-{step.target.to_value} W"
+                
+                if target_text:
+                    end_value += target_text
             
             # Descrizione
             description = step.description

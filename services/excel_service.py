@@ -866,13 +866,25 @@ class ExcelService:
             examples_df = pd.DataFrame(columns=['Type', 'Example', 'Description'])
                 
             # Popola il DataFrame della configurazione
+            # Ottieni la data della gara nel formato YYYY-MM-DD
+            race_day = config.get('planning.race_day', '')
+            # Converti nel formato GG/MM/YYYY se necessario
+            if race_day and '-' in race_day:
+                try:
+                    year, month, day = race_day.split('-')
+                    race_day_display = f"{day}/{month}/{year}"
+                except:
+                    race_day_display = race_day
+            else:
+                race_day_display = race_day
+            
             config_rows = [
                 {'Parametro': 'athlete_name', 'Valore': config.get('athlete_name', ''), 
                  'Descrizione': 'Nome dell\'atleta'},
                 {'Parametro': 'name_prefix', 'Valore': config.get('planning.name_prefix', ''), 
                  'Descrizione': 'Prefisso per i nomi degli allenamenti'},
-                {'Parametro': 'race_day', 'Valore': config.get('planning.race_day', ''), 
-                 'Descrizione': 'Data della gara (YYYY-MM-DD)'},
+                {'Parametro': 'race_day', 'Valore': race_day_display, 
+                 'Descrizione': 'Data della gara (GG/MM/AAAA)'},
                 {'Parametro': 'preferred_days', 'Valore': str(config.get('planning.preferred_days', [1, 3, 5])), 
                  'Descrizione': 'Giorni preferiti per gli allenamenti [0=Lunedì, 6=Domenica]'},
                 {'Parametro': 'margin.faster', 'Valore': config.get('sports.running.margins.faster', '0:05'), 
