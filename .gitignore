@@ -1,2 +1,4 @@
 *.pyc
 logs/garmin_planner.log
+*.pyc
+*.pyc

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Frame per la gestione delle zone di allenamento.
+Frame riorganizzato per la gestione delle zone di allenamento.
 """
 
 import os
@@ -52,63 +52,39 @@ class ZonesManagerFrame(ttk.Frame):
         main_frame = ttk.Frame(self, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Pannello diviso: sport a sinistra, zone a destra
-        paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True)
-        
-        # Frame sinistro per la selezione dello sport
-        left_frame = ttk.Frame(paned, padding=5)
-        paned.add(left_frame, weight=1)
-        
-        # Frame destro per le zone
-        right_frame = ttk.Frame(paned, padding=5)
-        paned.add(right_frame, weight=3)
-        
-        # --- Parte sinistra: Selezione sport ---
-        
         # Intestazione
-        ttk.Label(left_frame, text="Sport", style="Heading.TLabel").pack(fill=tk.X, pady=(0, 10))
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, pady=(0, 20))
         
-        # Lista degli sport
-        sport_frame = ttk.Frame(left_frame)
-        sport_frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(header_frame, text="Configurazione Zone di Allenamento", 
+                 style="Title.TLabel").pack(side=tk.LEFT)
         
-        # Crea i pulsanti per i diversi sport
-        self.sport_var = tk.StringVar(value="running")
+        # Notebook per i diversi tipi di zone
+        self.zones_notebook = ttk.Notebook(main_frame)
+        self.zones_notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        # Running
-        running_button = ttk.Radiobutton(sport_frame, text="Corsa", 
-                                      value="running", 
-                                      variable=self.sport_var, 
-                                      command=self.on_sport_change)
-        running_button.pack(fill=tk.X, pady=(0, 5))
+        # Tab per le zone di frequenza cardiaca (comune a tutti gli sport)
+        self.hr_frame = ttk.Frame(self.zones_notebook, padding=10)
+        self.zones_notebook.add(self.hr_frame, text="Frequenza Cardiaca")
         
-        create_tooltip(running_button, "Gestisci le zone per la corsa")
+        # Tab per le zone di passo (corsa, nuoto)
+        self.running_pace_frame = ttk.Frame(self.zones_notebook, padding=10)
+        self.zones_notebook.add(self.running_pace_frame, text="Passo Corsa")
         
-        # Cycling
-        cycling_button = ttk.Radiobutton(sport_frame, text="Ciclismo", 
-                                      value="cycling", 
-                                      variable=self.sport_var, 
-                                      command=self.on_sport_change)
-        cycling_button.pack(fill=tk.X, pady=(0, 5))
+        # Tab per le zone di passo del nuoto
+        self.swimming_pace_frame = ttk.Frame(self.zones_notebook, padding=10)
+        self.zones_notebook.add(self.swimming_pace_frame, text="Passo Nuoto")
         
-        create_tooltip(cycling_button, "Gestisci le zone per il ciclismo")
+        # Tab per le zone di potenza (ciclismo)
+        self.power_frame = ttk.Frame(self.zones_notebook, padding=10)
+        self.zones_notebook.add(self.power_frame, text="Potenza Ciclismo")
         
-        # Swimming
-        swimming_button = ttk.Radiobutton(sport_frame, text="Nuoto", 
-                                       value="swimming", 
-                                       variable=self.sport_var, 
-                                       command=self.on_sport_change)
-        swimming_button.pack(fill=tk.X)
-        
-        create_tooltip(swimming_button, "Gestisci le zone per il nuoto")
-        
-        # Frequenza cardiaca
-        hr_frame = ttk.LabelFrame(left_frame, text="Frequenza cardiaca")
-        hr_frame.pack(fill=tk.X, pady=(20, 0))
+        # Frequenza cardiaca nel frame HR
+        hr_config_frame = ttk.LabelFrame(self.hr_frame, text="Configurazione FC")
+        hr_config_frame.pack(fill=tk.X, pady=(0, 10))
         
         # Grid per allineare i campi
-        hr_grid = ttk.Frame(hr_frame)
+        hr_grid = ttk.Frame(hr_config_frame)
         hr_grid.pack(fill=tk.X, padx=10, pady=10)
         
         # FC massima
@@ -129,30 +105,46 @@ class ZonesManagerFrame(ttk.Frame):
         
         ttk.Label(hr_grid, text="bpm").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
         
-        # --- Parte destra: Zone ---
+        # Margini HR
+        hr_margins_frame = ttk.LabelFrame(self.hr_frame, text="Margini FC")
+        hr_margins_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # Intestazione
-        self.zone_header = ttk.Label(right_frame, text="Zone per la corsa", style="Heading.TLabel")
-        self.zone_header.pack(fill=tk.X, pady=(0, 10))
+        # Grid per allineare i campi
+        hr_margins_grid = ttk.Frame(hr_margins_frame)
+        hr_margins_grid.pack(fill=tk.X, padx=10, pady=10)
         
-        # Notebook per le diverse tipologie di zone
-        self.zones_notebook = ttk.Notebook(right_frame)
-        self.zones_notebook.pack(fill=tk.BOTH, expand=True)
+        # Margine superiore
+        ttk.Label(hr_margins_grid, text="Superiore:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
         
-        # Tab per le zone di passo (corsa, nuoto)
-        self.pace_frame = ttk.Frame(self.zones_notebook, padding=10)
-        self.zones_notebook.add(self.pace_frame, text="Zone di passo")
+        self.hr_up_var = tk.StringVar(value=str(self.config.get('hr_margins.hr_up', 5)))
+        hr_up_entry = ttk.Entry(hr_margins_grid, textvariable=self.hr_up_var, width=5)
+        hr_up_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
         
-        # Tab per le zone di potenza (ciclismo)
-        self.power_frame = ttk.Frame(self.zones_notebook, padding=10)
-        self.zones_notebook.add(self.power_frame, text="Zone di potenza")
+        ttk.Label(hr_margins_grid, text="bpm").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
         
-        # Tab per le zone di frequenza cardiaca (tutti gli sport)
-        self.hr_frame = ttk.Frame(self.zones_notebook, padding=10)
-        self.zones_notebook.add(self.hr_frame, text="Zone di frequenza cardiaca")
+        # Margine inferiore
+        ttk.Label(hr_margins_grid, text="Inferiore:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
         
-        # Pulsanti
-        buttons_frame = ttk.Frame(right_frame)
+        self.hr_down_var = tk.StringVar(value=str(self.config.get('hr_margins.hr_down', 5)))
+        hr_down_entry = ttk.Entry(hr_margins_grid, textvariable=self.hr_down_var, width=5)
+        hr_down_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(hr_margins_grid, text="bpm").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        
+        # Gestione zone HR
+        self.create_hr_zones_section(self.hr_frame)
+        
+        # Zona passo corsa
+        self.create_pace_zones_section(self.running_pace_frame, "running")
+        
+        # Zona passo nuoto
+        self.create_pace_zones_section(self.swimming_pace_frame, "swimming")
+        
+        # Zona potenza ciclismo
+        self.create_power_zones_section(self.power_frame)
+        
+        # Pulsanti per salvataggio e ripristino
+        buttons_frame = ttk.Frame(main_frame)
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
         
         self.save_button = ttk.Button(buttons_frame, text="Salva", 
@@ -163,384 +155,373 @@ class ZonesManagerFrame(ttk.Frame):
                                      command=self.reset_zones)
         self.reset_button.pack(side=tk.RIGHT, padx=(5, 0))
         
-        # Crea i widget per le zone
-        self.create_pace_zones()
-        self.create_power_zones()
-        self.create_hr_zones()
+        # Associa evento di cambio tab
+        self.zones_notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
     
-
-    def create_pace_zones(self):
-        """Create widgets for pace zones."""
-        # Description
-        ttk.Label(self.pace_frame, text="Configure pace zones (format: mm:ss or mm:ss-mm:ss)").pack(fill=tk.X, pady=(0, 10))
+    def create_hr_zones_section(self, parent_frame):
+        """Crea la sezione per gestire le zone di frequenza cardiaca."""
+        # Frame per la gestione delle zone
+        zones_frame = ttk.LabelFrame(parent_frame, text="Zone di Frequenza Cardiaca")
+        zones_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Add a frame for the zone management tools
-        tools_frame = ttk.Frame(self.pace_frame)
-        tools_frame.pack(fill=tk.X, pady=(0, 5))
+        # Toolbar per la gestione delle zone
+        toolbar = ttk.Frame(zones_frame)
+        toolbar.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Button(tools_frame, text="Add Zone", command=self.add_pace_zone).pack(side=tk.LEFT, padx=(0, 5))
-        self.edit_pace_button = ttk.Button(tools_frame, text="Edit Zone", command=self.edit_pace_zone, state="disabled")
-        self.edit_pace_button.pack(side=tk.LEFT, padx=(0, 5))
-        self.delete_pace_button = ttk.Button(tools_frame, text="Delete Zone", command=self.delete_pace_zone, state="disabled")
-        self.delete_pace_button.pack(side=tk.LEFT)
+        add_button = ttk.Button(toolbar, text="Aggiungi Zona", command=self.add_hr_zone)
+        add_button.pack(side=tk.LEFT, padx=(0, 5))
         
-        # Create a frame for the zones treeview
-        zones_frame = ttk.Frame(self.pace_frame)
-        zones_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
-        
-        # Create the treeview
-        columns = ("name", "range", "description")
-        self.pace_tree = ttk.Treeview(zones_frame, columns=columns, show="headings", selectmode="browse")
-        
-        # Set column headings
-        self.pace_tree.heading("name", text="Name")
-        self.pace_tree.heading("range", text="Pace Range (min/km)")
-        self.pace_tree.heading("description", text="Description")
-        
-        # Set column widths
-        self.pace_tree.column("name", width=100)
-        self.pace_tree.column("range", width=150)
-        self.pace_tree.column("description", width=250)
-        
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(zones_frame, orient=tk.VERTICAL, command=self.pace_tree.yview)
-        self.pace_tree.configure(yscrollcommand=scrollbar.set)
-        
-        # Pack everything
-        self.pace_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Bind selection event
-        self.pace_tree.bind("<<TreeviewSelect>>", self.on_pace_selected)
-        
-        # Frame for the margins
-        margins_frame = ttk.LabelFrame(self.pace_frame, text="Tolerance Margins")
-        margins_frame.pack(fill=tk.X, pady=(20, 0))
-        
-        # Grid for aligning fields
-        margins_grid = ttk.Frame(margins_frame)
-        margins_grid.pack(fill=tk.X, padx=10, pady=10)
-        
-        # Faster margin
-        ttk.Label(margins_grid, text="Faster:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
-        
-        self.pace_faster_var = tk.StringVar()
-        faster_entry = ttk.Entry(margins_grid, textvariable=self.pace_faster_var, width=5)
-        faster_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
-        
-        ttk.Label(margins_grid, text="min:sec").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
-        
-        # Slower margin
-        ttk.Label(margins_grid, text="Slower:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
-        
-        self.pace_slower_var = tk.StringVar()
-        slower_entry = ttk.Entry(margins_grid, textvariable=self.pace_slower_var, width=5)
-        slower_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
-        
-        ttk.Label(margins_grid, text="min:sec").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
-    
-    def create_power_zones(self):
-        """Create widgets for power zones."""
-        # Description
-        ttk.Label(self.power_frame, text="Configure power zones (format: N-N, N, <N or N+)").pack(fill=tk.X, pady=(0, 10))
-        
-        # Add a frame for the zone management tools
-        tools_frame = ttk.Frame(self.power_frame)
-        tools_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        ttk.Button(tools_frame, text="Add Zone", command=self.add_power_zone).pack(side=tk.LEFT, padx=(0, 5))
-        self.edit_power_button = ttk.Button(tools_frame, text="Edit Zone", command=self.edit_power_zone, state="disabled")
-        self.edit_power_button.pack(side=tk.LEFT, padx=(0, 5))
-        self.delete_power_button = ttk.Button(tools_frame, text="Delete Zone", command=self.delete_power_zone, state="disabled")
-        self.delete_power_button.pack(side=tk.LEFT)
-        
-        # Create a frame for the zones treeview
-        zones_frame = ttk.Frame(self.power_frame)
-        zones_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
-        
-        # Create the treeview
-        columns = ("name", "range", "description")
-        self.power_tree = ttk.Treeview(zones_frame, columns=columns, show="headings", selectmode="browse")
-        
-        # Set column headings
-        self.power_tree.heading("name", text="Name")
-        self.power_tree.heading("range", text="Power Range (watts)")
-        self.power_tree.heading("description", text="Description")
-        
-        # Set column widths
-        self.power_tree.column("name", width=100)
-        self.power_tree.column("range", width=150)
-        self.power_tree.column("description", width=250)
-        
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(zones_frame, orient=tk.VERTICAL, command=self.power_tree.yview)
-        self.power_tree.configure(yscrollcommand=scrollbar.set)
-        
-        # Pack everything
-        self.power_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # Bind selection event
-        self.power_tree.bind("<<TreeviewSelect>>", self.on_power_selected)
-        
-        # Frame for the margins
-        margins_frame = ttk.LabelFrame(self.power_frame, text="Tolerance Margins")
-        margins_frame.pack(fill=tk.X, pady=(20, 0))
-        
-        # Grid for aligning fields
-        margins_grid = ttk.Frame(margins_frame)
-        margins_grid.pack(fill=tk.X, padx=10, pady=10)
-        
-        # Upper margin
-        ttk.Label(margins_grid, text="Upper:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
-        
-        self.power_up_var = tk.StringVar()
-        power_up_entry = ttk.Entry(margins_grid, textvariable=self.power_up_var, width=5)
-        power_up_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
-        
-        ttk.Label(margins_grid, text="watts").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
-        
-        # Lower margin
-        ttk.Label(margins_grid, text="Lower:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
-        
-        self.power_down_var = tk.StringVar()
-        power_down_entry = ttk.Entry(margins_grid, textvariable=self.power_down_var, width=5)
-        power_down_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
-        
-        ttk.Label(margins_grid, text="watts").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
-
-    def add_power_zone(self):
-        """Add a new power zone."""
-        from gui.dialogs.zone_editor import ZoneEditorDialog
-        
-        def on_zone_added(zone):
-            # Add the zone to the configuration
-            self.config.config['sports']['cycling']['power_values'][zone.name] = zone.to_string()
-            
-            # Update the zones list
-            self.update_power_zones_list()
-        
-        dialog = ZoneEditorDialog(self, "power", None, on_zone_added)
-
-    def edit_power_zone(self):
-        """Edit the selected power zone."""
-        # Check if a zone is selected
-        selection = self.power_tree.selection()
-        if not selection:
-            return
-        
-        # Get the selected zone name
-        item = selection[0]
-        zone_name = self.power_tree.item(item, "values")[0]
-        
-        # Get the current zone values
-        power_range = self.config.get(f'sports.cycling.power_values.{zone_name}', '')
-        
-        if not power_range:
-            return
-        
-        # Create a PowerZone object
-        zone = PowerZone.from_string(zone_name, power_range)
-        
-        from gui.dialogs.zone_editor import ZoneEditorDialog
-        
-        def on_zone_edited(edited_zone):
-            # Check if the name has changed
-            if edited_zone.name != zone_name:
-                # Remove the old zone
-                if zone_name in self.config.config['sports']['cycling']['power_values']:
-                    del self.config.config['sports']['cycling']['power_values'][zone_name]
-            
-            # Update or add the zone
-            self.config.config['sports']['cycling']['power_values'][edited_zone.name] = edited_zone.to_string()
-            
-            # Update the zones list
-            self.update_power_zones_list()
-        
-        dialog = ZoneEditorDialog(self, "power", zone, on_zone_edited)
-
-    def delete_power_zone(self):
-        """Delete the selected power zone."""
-        # Check if a zone is selected
-        selection = self.power_tree.selection()
-        if not selection:
-            return
-        
-        # Get the selected zone name
-        item = selection[0]
-        zone_name = self.power_tree.item(item, "values")[0]
-        
-        # Ask for confirmation
-        if not ask_yes_no("Confirm Deletion", 
-                       f"Are you sure you want to delete the zone '{zone_name}'?", 
-                       parent=self):
-            return
-        
-        # Delete the zone from the configuration
-        if zone_name in self.config.config['sports']['cycling']['power_values']:
-            del self.config.config['sports']['cycling']['power_values'][zone_name]
-        
-        # Update the zones list
-        self.update_power_zones_list()
-
-    def on_power_selected(self, event):
-        """Handle the selection of a power zone."""
-        # Enable/disable buttons based on selection
-        selection = self.power_tree.selection()
-        if selection:
-            self.edit_power_button.config(state="normal")
-            self.delete_power_button.config(state="normal")
-        else:
-            self.edit_power_button.config(state="disabled")
-            self.delete_power_button.config(state="disabled")
-        
-    def create_hr_zones(self):
-        """Create widgets for heart rate zones."""
-        # Description
-        ttk.Label(self.hr_frame, text="Configure heart rate zones (format: N-N bpm or N-N% max_hr)").pack(fill=tk.X, pady=(0, 10))
-        
-        # Add a frame for the zone management tools
-        tools_frame = ttk.Frame(self.hr_frame)
-        tools_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        ttk.Button(tools_frame, text="Add Zone", command=self.add_hr_zone).pack(side=tk.LEFT, padx=(0, 5))
-        self.edit_hr_button = ttk.Button(tools_frame, text="Edit Zone", command=self.edit_hr_zone, state="disabled")
+        self.edit_hr_button = ttk.Button(toolbar, text="Modifica Zona", 
+                                      command=self.edit_hr_zone, state="disabled")
         self.edit_hr_button.pack(side=tk.LEFT, padx=(0, 5))
-        self.delete_hr_button = ttk.Button(tools_frame, text="Delete Zone", command=self.delete_hr_zone, state="disabled")
+        
+        self.delete_hr_button = ttk.Button(toolbar, text="Elimina Zona", 
+                                        command=self.delete_hr_zone, state="disabled")
         self.delete_hr_button.pack(side=tk.LEFT)
         
-        # Create a frame for the zones treeview
-        zones_frame = ttk.Frame(self.hr_frame)
-        zones_frame.pack(fill=tk.BOTH, expand=True, pady=(5, 10))
+        # Lista delle zone
+        list_frame = ttk.Frame(zones_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Create the treeview
+        # Crea il treeview
         columns = ("name", "range", "description")
-        self.hr_tree = ttk.Treeview(zones_frame, columns=columns, show="headings", selectmode="browse")
+        self.hr_tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
         
-        # Set column headings
-        self.hr_tree.heading("name", text="Name")
-        self.hr_tree.heading("range", text="Heart Rate Range")
-        self.hr_tree.heading("description", text="Description")
+        # Intestazioni
+        self.hr_tree.heading("name", text="Nome")
+        self.hr_tree.heading("range", text="Intervallo")
+        self.hr_tree.heading("description", text="Descrizione")
         
-        # Set column widths
+        # Larghezze colonne
         self.hr_tree.column("name", width=100)
         self.hr_tree.column("range", width=150)
         self.hr_tree.column("description", width=250)
         
-        # Add scrollbar
-        scrollbar = ttk.Scrollbar(zones_frame, orient=tk.VERTICAL, command=self.hr_tree.yview)
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.hr_tree.yview)
         self.hr_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Pack everything
+        # Pack
         self.hr_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Bind selection event
+        # Binding per la selezione
         self.hr_tree.bind("<<TreeviewSelect>>", self.on_hr_selected)
         
-        # Frame for the margins
-        margins_frame = ttk.LabelFrame(self.hr_frame, text="Tolerance Margins")
-        margins_frame.pack(fill=tk.X, pady=(20, 0))
+    def create_pace_zones_section(self, parent_frame, sport_type):
+        """
+        Crea la sezione per gestire le zone di passo.
         
-        # Grid for aligning fields
+        Args:
+            parent_frame: Frame genitore
+            sport_type: Tipo di sport (running, swimming)
+        """
+        # Frame per i margini
+        margins_frame = ttk.LabelFrame(parent_frame, text="Margini di Passo")
+        margins_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Grid per allineare i campi
         margins_grid = ttk.Frame(margins_frame)
         margins_grid.pack(fill=tk.X, padx=10, pady=10)
         
-        # Upper margin
-        ttk.Label(margins_grid, text="Upper:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        # Margine più veloce
+        ttk.Label(margins_grid, text="Più veloce:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
         
-        self.hr_up_var = tk.StringVar()
-        hr_up_entry = ttk.Entry(margins_grid, textvariable=self.hr_up_var, width=5)
-        hr_up_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
+        # Aggiungi variabili specifiche per sport
+        if sport_type == "running":
+            self.running_pace_faster_var = tk.StringVar(value=self.config.get('sports.running.margins.faster', '0:05'))
+            faster_entry = ttk.Entry(margins_grid, textvariable=self.running_pace_faster_var, width=5)
+        else:  # swimming
+            self.swimming_pace_faster_var = tk.StringVar(value=self.config.get('sports.swimming.margins.faster', '0:05'))
+            faster_entry = ttk.Entry(margins_grid, textvariable=self.swimming_pace_faster_var, width=5)
         
-        ttk.Label(margins_grid, text="bpm").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        faster_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
+        ttk.Label(margins_grid, text="min:sec").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
         
-        # Lower margin
-        ttk.Label(margins_grid, text="Lower:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        # Margine più lento
+        ttk.Label(margins_grid, text="Più lento:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
         
-        self.hr_down_var = tk.StringVar()
-        hr_down_entry = ttk.Entry(margins_grid, textvariable=self.hr_down_var, width=5)
-        hr_down_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
+        if sport_type == "running":
+            self.running_pace_slower_var = tk.StringVar(value=self.config.get('sports.running.margins.slower', '0:05'))
+            slower_entry = ttk.Entry(margins_grid, textvariable=self.running_pace_slower_var, width=5)
+        else:  # swimming
+            self.swimming_pace_slower_var = tk.StringVar(value=self.config.get('sports.swimming.margins.slower', '0:05'))
+            slower_entry = ttk.Entry(margins_grid, textvariable=self.swimming_pace_slower_var, width=5)
         
-        ttk.Label(margins_grid, text="bpm").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
-
+        slower_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
+        ttk.Label(margins_grid, text="min:sec").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        
+        # Frame per la gestione delle zone
+        zones_frame = ttk.LabelFrame(parent_frame, text="Zone di Passo")
+        zones_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Toolbar per la gestione delle zone
+        toolbar = ttk.Frame(zones_frame)
+        toolbar.pack(fill=tk.X, padx=10, pady=10)
+        
+        if sport_type == "running":
+            add_button = ttk.Button(toolbar, text="Aggiungi Zona", 
+                                 command=lambda: self.add_pace_zone("running"))
+            self.edit_pace_run_button = ttk.Button(toolbar, text="Modifica Zona", 
+                                               command=lambda: self.edit_pace_zone("running"), 
+                                               state="disabled")
+            self.delete_pace_run_button = ttk.Button(toolbar, text="Elimina Zona", 
+                                                 command=lambda: self.delete_pace_zone("running"), 
+                                                 state="disabled")
+            
+            add_button.pack(side=tk.LEFT, padx=(0, 5))
+            self.edit_pace_run_button.pack(side=tk.LEFT, padx=(0, 5))
+            self.delete_pace_run_button.pack(side=tk.LEFT)
+            
+            # Lista delle zone
+            list_frame = ttk.Frame(zones_frame)
+            list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+            
+            # Crea il treeview
+            columns = ("name", "range", "description")
+            self.running_pace_tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
+            
+            # Intestazioni
+            self.running_pace_tree.heading("name", text="Nome")
+            self.running_pace_tree.heading("range", text="Intervallo (min/km)")
+            self.running_pace_tree.heading("description", text="Descrizione")
+            
+            # Larghezze colonne
+            self.running_pace_tree.column("name", width=100)
+            self.running_pace_tree.column("range", width=150)
+            self.running_pace_tree.column("description", width=250)
+            
+            # Scrollbar
+            scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.running_pace_tree.yview)
+            self.running_pace_tree.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack
+            self.running_pace_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Binding per la selezione
+            self.running_pace_tree.bind("<<TreeviewSelect>>", lambda e: self.on_pace_selected(e, "running"))
+            
+        else:  # swimming
+            add_button = ttk.Button(toolbar, text="Aggiungi Zona", 
+                                 command=lambda: self.add_pace_zone("swimming"))
+            self.edit_pace_swim_button = ttk.Button(toolbar, text="Modifica Zona", 
+                                                command=lambda: self.edit_pace_zone("swimming"), 
+                                                state="disabled")
+            self.delete_pace_swim_button = ttk.Button(toolbar, text="Elimina Zona", 
+                                                  command=lambda: self.delete_pace_zone("swimming"), 
+                                                  state="disabled")
+            
+            add_button.pack(side=tk.LEFT, padx=(0, 5))
+            self.edit_pace_swim_button.pack(side=tk.LEFT, padx=(0, 5))
+            self.delete_pace_swim_button.pack(side=tk.LEFT)
+            
+            # Lista delle zone
+            list_frame = ttk.Frame(zones_frame)
+            list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+            
+            # Crea il treeview
+            columns = ("name", "range", "description")
+            self.swimming_pace_tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
+            
+            # Intestazioni
+            self.swimming_pace_tree.heading("name", text="Nome")
+            self.swimming_pace_tree.heading("range", text="Intervallo (min/100m)")
+            self.swimming_pace_tree.heading("description", text="Descrizione")
+            
+            # Larghezze colonne
+            self.swimming_pace_tree.column("name", width=100)
+            self.swimming_pace_tree.column("range", width=150)
+            self.swimming_pace_tree.column("description", width=250)
+            
+            # Scrollbar
+            scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.swimming_pace_tree.yview)
+            self.swimming_pace_tree.configure(yscrollcommand=scrollbar.set)
+            
+            # Pack
+            self.swimming_pace_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Binding per la selezione
+            self.swimming_pace_tree.bind("<<TreeviewSelect>>", lambda e: self.on_pace_selected(e, "swimming"))
+    
+    def create_power_zones_section(self, parent_frame):
+        """Crea la sezione per gestire le zone di potenza."""
+        # Frame per FTP
+        ftp_frame = ttk.LabelFrame(parent_frame, text="FTP (Functional Threshold Power)")
+        ftp_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Grid per allineare i campi
+        ftp_grid = ttk.Frame(ftp_frame)
+        ftp_grid.pack(fill=tk.X, padx=10, pady=10)
+        
+        # FTP
+        ttk.Label(ftp_grid, text="FTP:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        
+        self.ftp_var = tk.StringVar(value=str(self.config.get('sports.cycling.power_values.ftp', 250)))
+        ftp_entry = ttk.Entry(ftp_grid, textvariable=self.ftp_var, width=5)
+        ftp_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(ftp_grid, text="watt").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        
+        # Frame per i margini
+        margins_frame = ttk.LabelFrame(parent_frame, text="Margini di Potenza")
+        margins_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Grid per allineare i campi
+        margins_grid = ttk.Frame(margins_frame)
+        margins_grid.pack(fill=tk.X, padx=10, pady=10)
+        
+        # Margine superiore
+        ttk.Label(margins_grid, text="Superiore:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        
+        self.power_up_var = tk.StringVar(value=str(self.config.get('sports.cycling.margins.power_up', 10)))
+        power_up_entry = ttk.Entry(margins_grid, textvariable=self.power_up_var, width=5)
+        power_up_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(margins_grid, text="watt").grid(row=0, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        
+        # Margine inferiore
+        ttk.Label(margins_grid, text="Inferiore:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        
+        self.power_down_var = tk.StringVar(value=str(self.config.get('sports.cycling.margins.power_down', 10)))
+        power_down_entry = ttk.Entry(margins_grid, textvariable=self.power_down_var, width=5)
+        power_down_entry.grid(row=1, column=1, sticky=tk.W, pady=5)
+        
+        ttk.Label(margins_grid, text="watt").grid(row=1, column=2, sticky=tk.W, padx=(5, 0), pady=5)
+        
+        # Frame per la gestione delle zone
+        zones_frame = ttk.LabelFrame(parent_frame, text="Zone di Potenza")
+        zones_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Toolbar per la gestione delle zone
+        toolbar = ttk.Frame(zones_frame)
+        toolbar.pack(fill=tk.X, padx=10, pady=10)
+        
+        add_button = ttk.Button(toolbar, text="Aggiungi Zona", command=self.add_power_zone)
+        add_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.edit_power_button = ttk.Button(toolbar, text="Modifica Zona", 
+                                         command=self.edit_power_zone, state="disabled")
+        self.edit_power_button.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.delete_power_button = ttk.Button(toolbar, text="Elimina Zona", 
+                                           command=self.delete_power_zone, state="disabled")
+        self.delete_power_button.pack(side=tk.LEFT)
+        
+        # Lista delle zone
+        list_frame = ttk.Frame(zones_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        
+        # Crea il treeview
+        columns = ("name", "range", "description")
+        self.power_tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
+        
+        # Intestazioni
+        self.power_tree.heading("name", text="Nome")
+        self.power_tree.heading("range", text="Intervallo (watt)")
+        self.power_tree.heading("description", text="Descrizione")
+        
+        # Larghezze colonne
+        self.power_tree.column("name", width=100)
+        self.power_tree.column("range", width=150)
+        self.power_tree.column("description", width=250)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.power_tree.yview)
+        self.power_tree.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack
+        self.power_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Binding per la selezione
+        self.power_tree.bind("<<TreeviewSelect>>", self.on_power_selected)
+    
+    # Aggiungi i metodi per gestire gli eventi e le azioni delle zone
+    
+    def on_tab_changed(self, event):
+        """Gestisce il cambio di tab."""
+        # Nessuna azione specifica necessaria al momento
+        pass
+    
     def add_hr_zone(self):
-        """Add a new heart rate zone."""
+        """Aggiunge una nuova zona di frequenza cardiaca."""
         from gui.dialogs.zone_editor import ZoneEditorDialog
         
         def on_zone_added(zone):
-            # Add the zone to the configuration
+            # Aggiungi la zona alla configurazione
             self.config.config['heart_rates'][zone.name] = zone.to_string()
             
-            # Update the zones list
+            # Aggiorna la lista
             self.update_hr_zones_list()
         
         dialog = ZoneEditorDialog(self, "heart_rate", None, on_zone_added)
-
+    
     def edit_hr_zone(self):
-        """Edit the selected heart rate zone."""
-        # Check if a zone is selected
+        """Modifica la zona di frequenza cardiaca selezionata."""
+        # Verifica che sia selezionata una zona
         selection = self.hr_tree.selection()
         if not selection:
             return
         
-        # Get the selected zone name
+        # Ottieni la zona selezionata
         item = selection[0]
         zone_name = self.hr_tree.item(item, "values")[0]
         
-        # Get the current zone values
+        # Ottieni i valori attuali
         hr_range = self.config.get(f'heart_rates.{zone_name}', '')
         
         if not hr_range:
             return
         
-        # Create a HeartRateZone object
+        # Crea l'oggetto zona
         zone = HeartRateZone.from_string(zone_name, hr_range)
         
         from gui.dialogs.zone_editor import ZoneEditorDialog
         
         def on_zone_edited(edited_zone):
-            # Check if the name has changed
+            # Controlla se il nome è cambiato
             if edited_zone.name != zone_name:
-                # Remove the old zone
+                # Rimuovi la vecchia zona
                 if zone_name in self.config.config['heart_rates']:
                     del self.config.config['heart_rates'][zone_name]
             
-            # Update or add the zone
+            # Aggiorna o aggiungi la zona
             self.config.config['heart_rates'][edited_zone.name] = edited_zone.to_string()
             
-            # Update the zones list
+            # Aggiorna la lista
             self.update_hr_zones_list()
         
         dialog = ZoneEditorDialog(self, "heart_rate", zone, on_zone_edited)
-
+    
     def delete_hr_zone(self):
-        """Delete the selected heart rate zone."""
-        # Check if a zone is selected
+        """Elimina la zona di frequenza cardiaca selezionata."""
+        # Verifica che sia selezionata una zona
         selection = self.hr_tree.selection()
         if not selection:
             return
         
-        # Get the selected zone name
+        # Ottieni la zona selezionata
         item = selection[0]
         zone_name = self.hr_tree.item(item, "values")[0]
         
-        # Ask for confirmation
-        if not ask_yes_no("Confirm Deletion", 
-                       f"Are you sure you want to delete the zone '{zone_name}'?", 
-                       parent=self):
+        # Chiedi conferma
+        if not ask_yes_no("Conferma eliminazione", 
+                      f"Sei sicuro di voler eliminare la zona '{zone_name}'?", 
+                      parent=self):
             return
         
-        # Delete the zone from the configuration
+        # Elimina la zona
         if zone_name in self.config.config['heart_rates']:
             del self.config.config['heart_rates'][zone_name]
         
-        # Update the zones list
+        # Aggiorna la lista
         self.update_hr_zones_list()
-
+    
     def on_hr_selected(self, event):
-        """Handle the selection of a heart rate zone."""
-        # Enable/disable buttons based on selection
+        """Gestisce la selezione di una zona di frequenza cardiaca."""
+        # Abilita/disabilita i pulsanti in base alla selezione
         selection = self.hr_tree.selection()
         if selection:
             self.edit_hr_button.config(state="normal")
@@ -548,418 +529,419 @@ class ZonesManagerFrame(ttk.Frame):
         else:
             self.edit_hr_button.config(state="disabled")
             self.delete_hr_button.config(state="disabled")
-
-    def add_pace_zone(self):
-        """Add a new pace zone."""
+    
+    def add_pace_zone(self, sport_type):
+        """
+        Aggiunge una nuova zona di passo.
+        
+        Args:
+            sport_type: Tipo di sport (running, swimming)
+        """
         from gui.dialogs.zone_editor import ZoneEditorDialog
         
         def on_zone_added(zone):
-            # Add the zone to the configuration
-            sport = self.sport_var.get()
-            self.config.config['sports'][sport]['paces'][zone.name] = zone.to_string()
+            # Aggiungi la zona alla configurazione
+            self.config.config['sports'][sport_type]['paces'][zone.name] = zone.to_string()
             
-            # Update the zones list
-            self.update_pace_zones_list()
+            # Aggiorna la lista
+            self.update_pace_zones_list(sport_type)
         
         dialog = ZoneEditorDialog(self, "pace", None, on_zone_added)
-
-    def edit_pace_zone(self):
-        """Edit the selected pace zone."""
-        # Check if a zone is selected
-        selection = self.pace_tree.selection()
+    
+    def edit_pace_zone(self, sport_type):
+        """
+        Modifica la zona di passo selezionata.
+        
+        Args:
+            sport_type: Tipo di sport (running, swimming)
+        """
+        # Verifica che sia selezionata una zona
+        tree = self.running_pace_tree if sport_type == "running" else self.swimming_pace_tree
+        selection = tree.selection()
         if not selection:
             return
         
-        # Get the selected zone name
+        # Ottieni la zona selezionata
         item = selection[0]
-        zone_name = self.pace_tree.item(item, "values")[0]
+        zone_name = tree.item(item, "values")[0]
         
-        # Get the current zone values
-        sport = self.sport_var.get()
-        pace_range = self.config.get(f'sports.{sport}.paces.{zone_name}', '')
+        # Ottieni i valori attuali
+        pace_range = self.config.get(f'sports.{sport_type}.paces.{zone_name}', '')
         
         if not pace_range:
             return
         
-        # Create a PaceZone object
+        # Crea l'oggetto zona
         zone = PaceZone.from_string(zone_name, pace_range)
         
         from gui.dialogs.zone_editor import ZoneEditorDialog
         
         def on_zone_edited(edited_zone):
-            # Check if the name has changed
+            # Controlla se il nome è cambiato
             if edited_zone.name != zone_name:
-                # Remove the old zone
-                if zone_name in self.config.config['sports'][sport]['paces']:
-                    del self.config.config['sports'][sport]['paces'][zone_name]
+                # Rimuovi la vecchia zona
+                if zone_name in self.config.config['sports'][sport_type]['paces']:
+                    del self.config.config['sports'][sport_type]['paces'][zone_name]
             
-            # Update or add the zone
-            self.config.config['sports'][sport]['paces'][edited_zone.name] = edited_zone.to_string()
+            # Aggiorna o aggiungi la zona
+            self.config.config['sports'][sport_type]['paces'][edited_zone.name] = edited_zone.to_string()
             
-            # Update the zones list
-            self.update_pace_zones_list()
+            # Aggiorna la lista
+            self.update_pace_zones_list(sport_type)
         
         dialog = ZoneEditorDialog(self, "pace", zone, on_zone_edited)
-
-    def delete_pace_zone(self):
-        """Delete the selected pace zone."""
-        # Check if a zone is selected
-        selection = self.pace_tree.selection()
+    
+    def delete_pace_zone(self, sport_type):
+        """
+        Elimina la zona di passo selezionata.
+        
+        Args:
+            sport_type: Tipo di sport (running, swimming)
+        """
+        # Verifica che sia selezionata una zona
+        tree = self.running_pace_tree if sport_type == "running" else self.swimming_pace_tree
+        selection = tree.selection()
         if not selection:
             return
         
-        # Get the selected zone name
+        # Ottieni la zona selezionata
         item = selection[0]
-        zone_name = self.pace_tree.item(item, "values")[0]
+        zone_name = tree.item(item, "values")[0]
         
-        # Ask for confirmation
-        if not ask_yes_no("Confirm Deletion", 
-                       f"Are you sure you want to delete the zone '{zone_name}'?", 
-                       parent=self):
+        # Chiedi conferma
+        if not ask_yes_no("Conferma eliminazione", 
+                      f"Sei sicuro di voler eliminare la zona '{zone_name}'?", 
+                      parent=self):
             return
         
-        # Delete the zone from the configuration
-        sport = self.sport_var.get()
-        if zone_name in self.config.config['sports'][sport]['paces']:
-            del self.config.config['sports'][sport]['paces'][zone_name]
+        # Elimina la zona
+        if zone_name in self.config.config['sports'][sport_type]['paces']:
+            del self.config.config['sports'][sport_type]['paces'][zone_name]
         
-        # Update the zones list
-        self.update_pace_zones_list()
-
-    def on_pace_selected(self, event):
-        """Handle the selection of a pace zone."""
-        # Enable/disable buttons based on selection
-        selection = self.pace_tree.selection()
+        # Aggiorna la lista
+        self.update_pace_zones_list(sport_type)
+    
+    def on_pace_selected(self, event, sport_type):
+        """
+        Gestisce la selezione di una zona di passo.
+        
+        Args:
+            event: Evento Tkinter
+            sport_type: Tipo di sport (running, swimming)
+        """
+        # Abilita/disabilita i pulsanti in base alla selezione
+        if sport_type == "running":
+            selection = self.running_pace_tree.selection()
+            if selection:
+                self.edit_pace_run_button.config(state="normal")
+                self.delete_pace_run_button.config(state="normal")
+            else:
+                self.edit_pace_run_button.config(state="disabled")
+                self.delete_pace_run_button.config(state="disabled")
+        else:  # swimming
+            selection = self.swimming_pace_tree.selection()
+            if selection:
+                self.edit_pace_swim_button.config(state="normal")
+                self.delete_pace_swim_button.config(state="normal")
+            else:
+                self.edit_pace_swim_button.config(state="disabled")
+                self.delete_pace_swim_button.config(state="disabled")
+    
+    def add_power_zone(self):
+        """Aggiunge una nuova zona di potenza."""
+        from gui.dialogs.zone_editor import ZoneEditorDialog
+        
+        def on_zone_added(zone):
+            # Aggiungi la zona alla configurazione
+            self.config.config['sports']['cycling']['power_values'][zone.name] = zone.to_string()
+            
+            # Aggiorna la lista
+            self.update_power_zones_list()
+        
+        dialog = ZoneEditorDialog(self, "power", None, on_zone_added)
+    
+    def edit_power_zone(self):
+        """Modifica la zona di potenza selezionata."""
+        # Verifica che sia selezionata una zona
+        selection = self.power_tree.selection()
+        if not selection:
+            return
+        
+        # Ottieni la zona selezionata
+        item = selection[0]
+        zone_name = self.power_tree.item(item, "values")[0]
+        
+        # Ottieni i valori attuali
+        power_range = self.config.get(f'sports.cycling.power_values.{zone_name}', '')
+        
+        if not power_range:
+            return
+        
+        # Crea l'oggetto zona
+        zone = PowerZone.from_string(zone_name, power_range)
+        
+        from gui.dialogs.zone_editor import ZoneEditorDialog
+        
+        def on_zone_edited(edited_zone):
+            # Controlla se il nome è cambiato
+            if edited_zone.name != zone_name:
+                # Rimuovi la vecchia zona
+                if zone_name in self.config.config['sports']['cycling']['power_values']:
+                    del self.config.config['sports']['cycling']['power_values'][zone_name]
+            
+            # Aggiorna o aggiungi la zona
+            self.config.config['sports']['cycling']['power_values'][edited_zone.name] = edited_zone.to_string()
+            
+            # Aggiorna la lista
+            self.update_power_zones_list()
+        
+        dialog = ZoneEditorDialog(self, "power", zone, on_zone_edited)
+    
+    def delete_power_zone(self):
+        """Elimina la zona di potenza selezionata."""
+        # Verifica che sia selezionata una zona
+        selection = self.power_tree.selection()
+        if not selection:
+            return
+        
+        # Ottieni la zona selezionata
+        item = selection[0]
+        zone_name = self.power_tree.item(item, "values")[0]
+        
+        # Chiedi conferma
+        if not ask_yes_no("Conferma eliminazione", 
+                      f"Sei sicuro di voler eliminare la zona '{zone_name}'?", 
+                      parent=self):
+            return
+        
+        # Elimina la zona
+        if zone_name in self.config.config['sports']['cycling']['power_values']:
+            del self.config.config['sports']['cycling']['power_values'][zone_name]
+        
+        # Aggiorna la lista
+        self.update_power_zones_list()
+    
+    def on_power_selected(self, event):
+        """Gestisce la selezione di una zona di potenza."""
+        # Abilita/disabilita i pulsanti in base alla selezione
+        selection = self.power_tree.selection()
         if selection:
-            self.edit_pace_button.config(state="normal")
-            self.delete_pace_button.config(state="normal")
+            self.edit_power_button.config(state="normal")
+            self.delete_power_button.config(state="normal")
         else:
-            self.edit_pace_button.config(state="disabled")
-            self.delete_pace_button.config(state="disabled")
-
-    def update_pace_zones_list(self):
-        """Update the list of pace zones."""
-        # Clear the current list
-        for item in self.pace_tree.get_children():
-            self.pace_tree.delete(item)
-        
-        # Get the zones for the current sport
-        sport = self.sport_var.get()
-        paces = self.config.get(f'sports.{sport}.paces', {})
-        
-        # Add zones to the list
-        for name, value in paces.items():
-            description = ""  # We would need to store descriptions somewhere
-            self.pace_tree.insert("", "end", values=(name, value, description))
-
-    def update_power_zones_list(self):
-        """Update the list of power zones."""
-        # Clear the current list
-        for item in self.power_tree.get_children():
-            self.power_tree.delete(item)
-        
-        # Get the zones for cycling
-        power_values = self.config.get('sports.cycling.power_values', {})
-        
-        # Add zones to the list
-        for name, value in power_values.items():
-            description = ""  # We would need to store descriptions somewhere
-            self.power_tree.insert("", "end", values=(name, value, description))
-
+            self.edit_power_button.config(state="disabled")
+            self.delete_power_button.config(state="disabled")
+    
     def update_hr_zones_list(self):
-        """Update the list of heart rate zones."""
-        # Clear the current list
+        """Aggiorna la lista delle zone di frequenza cardiaca."""
+        # Pulisci la lista
         for item in self.hr_tree.get_children():
             self.hr_tree.delete(item)
         
-        # Get the heart rate zones
+        # Ottieni le zone
         heart_rates = self.config.get('heart_rates', {})
         
-        # Add zones to the list
+        # Aggiungi le zone alla lista
         for name, value in heart_rates.items():
             if name.endswith('_HR') or name in ['max_hr', 'rest_hr']:
-                description = ""  # We would need to store descriptions somewhere
+                # Descrizione per zone comuni
+                description = ""
+                if name == 'Z1_HR':
+                    description = "Zona di recupero attivo"
+                elif name == 'Z2_HR':
+                    description = "Zona aerobica di base"
+                elif name == 'Z3_HR':
+                    description = "Zona aerobica di sviluppo"
+                elif name == 'Z4_HR':
+                    description = "Zona di soglia anaerobica"
+                elif name == 'Z5_HR':
+                    description = "Zona di VO2max"
+                
                 self.hr_tree.insert("", "end", values=(name, value, description))
-
-    def on_sport_change(self):
-        """Gestisce il cambio di sport."""
-        # Ottieni lo sport selezionato
-        sport = self.sport_var.get()
+    
+    def update_pace_zones_list(self, sport_type):
+        """
+        Aggiorna la lista delle zone di passo.
         
-        # Aggiorna l'intestazione
-        if sport == "running":
-            self.zone_header.config(text="Zone per la corsa")
-        elif sport == "cycling":
-            self.zone_header.config(text="Zone per il ciclismo")
-        elif sport == "swimming":
-            self.zone_header.config(text="Zone per il nuoto")
+        Args:
+            sport_type: Tipo di sport (running, swimming)
+        """
+        # Seleziona il treeview appropriato
+        tree = self.running_pace_tree if sport_type == "running" else self.swimming_pace_tree
         
-        # Mostra/nascondi le tab appropriate
-        if sport == "cycling":
-            # Il ciclismo usa le zone di potenza
-            if "Zone di potenza" not in self.zones_notebook.tabs():
-                self.zones_notebook.add(self.power_frame, text="Zone di potenza")
-            
-            # Seleziona la tab delle zone di potenza
-            tab_idx = self.zones_notebook.index(self.power_frame)
-            self.zones_notebook.select(tab_idx)
-            
-            # Nascondi le tab non utilizzate
-            if "Zone di passo" in self.zones_notebook.tabs():
-                self.zones_notebook.hide(self.pace_frame)
-        else:
-            # Corsa e nuoto usano le zone di passo
-            if "Zone di passo" not in self.zones_notebook.tabs():
-                self.zones_notebook.add(self.pace_frame, text="Zone di passo")
-            
-            # Seleziona la tab delle zone di passo
-            tab_idx = self.zones_notebook.index(self.pace_frame)
-            self.zones_notebook.select(tab_idx)
-            
-            # Nascondi le tab non utilizzate
-            if "Zone di potenza" in self.zones_notebook.tabs():
-                self.zones_notebook.hide(self.power_frame)
+        # Pulisci la lista
+        for item in tree.get_children():
+            tree.delete(item)
         
-        # Carica le zone per il nuovo sport
-        self.load_zones()
+        # Ottieni le zone
+        paces = self.config.get(f'sports.{sport_type}.paces', {})
+        
+        # Aggiungi le zone alla lista
+        for name, value in paces.items():
+            # Descrizione per zone comuni
+            description = ""
+            if name == 'Z1':
+                description = "Zona facile/recuperativa"
+            elif name == 'Z2':
+                description = "Zona aerobica"
+            elif name == 'Z3':
+                description = "Zona di soglia aerobica"
+            elif name == 'Z4':
+                description = "Zona di soglia anaerobica"
+            elif name == 'Z5':
+                description = "Zona di VO2max"
+            elif name == 'recovery':
+                description = "Recupero"
+            elif name == 'threshold':
+                description = "Soglia"
+            elif name == 'marathon':
+                description = "Passo maratona"
+            elif name == 'race_pace':
+                description = "Passo gara"
+            
+            tree.insert("", "end", values=(name, value, description))
+    
+    def update_power_zones_list(self):
+        """Aggiorna la lista delle zone di potenza."""
+        # Pulisci la lista
+        for item in self.power_tree.get_children():
+            self.power_tree.delete(item)
+        
+        # Ottieni le zone
+        power_values = self.config.get('sports.cycling.power_values', {})
+        
+        # Aggiungi le zone alla lista
+        for name, value in power_values.items():
+            # Salta FTP, verrà mostrato nel campo dedicato
+            if name == 'ftp':
+                continue
+                
+            # Descrizione per zone comuni
+            description = ""
+            if name == 'Z1':
+                description = "Recupero attivo (55-75% FTP)"
+            elif name == 'Z2':
+                description = "Resistenza/Fondo (76-90% FTP)"
+            elif name == 'Z3':
+                description = "Tempo/Soglia (91-105% FTP)"
+            elif name == 'Z4':
+                description = "VO2max (106-120% FTP)"
+            elif name == 'Z5':
+                description = "Capacità anaerobica (121-150% FTP)"
+            elif name == 'Z6':
+                description = "Potenza neuromuscolare (>150% FTP)"
+            elif name == 'recovery':
+                description = "Recupero (<55% FTP)"
+            elif name == 'threshold':
+                description = "Soglia (95-105% FTP)"
+            elif name == 'sweet_spot':
+                description = "Sweet Spot (88-94% FTP)"
+            
+            self.power_tree.insert("", "end", values=(name, value, description))
     
     def load_zones(self):
-        """Load zones from the configuration."""
-        # Get the selected sport
-        sport = self.sport_var.get()
-        
-        # Load heart rate
-        max_hr = self.config.get('heart_rates.max_hr', 180)
-        rest_hr = self.config.get('heart_rates.rest_hr', 60)
-        
-        self.max_hr_var.set(str(max_hr))
-        self.rest_hr_var.set(str(rest_hr))
-        
-        # Update the zone lists
-        self.update_pace_zones_list()
-        self.update_power_zones_list()
+        """Carica le zone dalla configurazione."""
+        # Aggiorna le liste delle zone
         self.update_hr_zones_list()
-        
-        # Load pace/power margins
-        if sport == "running" or sport == "swimming":
-            # Pace margins
-            faster = self.config.get(f'sports.{sport}.margins.faster', '0:05')
-            slower = self.config.get(f'sports.{sport}.margins.slower', '0:05')
-            
-            self.pace_faster_var.set(faster)
-            self.pace_slower_var.set(slower)
-        elif sport == "cycling":
-            # Power margins
-            power_up = self.config.get('sports.cycling.margins.power_up', 10)
-            power_down = self.config.get('sports.cycling.margins.power_down', 10)
-            
-            self.power_up_var.set(str(power_up))
-            self.power_down_var.set(str(power_down))
-        
-        # Load heart rate margins
-        hr_up = self.config.get('hr_margins.hr_up', 5)
-        hr_down = self.config.get('hr_margins.hr_down', 5)
-        
-        self.hr_up_var.set(str(hr_up))
-        self.hr_down_var.set(str(hr_down))
+        self.update_pace_zones_list("running")
+        self.update_pace_zones_list("swimming")
+        self.update_power_zones_list()
     
     def save_zones(self):
-        """Save zones to the configuration."""
-        # Get the selected sport
-        sport = self.sport_var.get()
-        
+        """Salva le zone nella configurazione."""
         try:
-            # Save heart rate max and rest
+            # Salva i valori di frequenza cardiaca
             try:
                 max_hr = int(self.max_hr_var.get())
                 rest_hr = int(self.rest_hr_var.get())
                 
                 if max_hr <= 0 or rest_hr <= 0:
-                    raise ValueError("Heart rate must be greater than zero")
+                    raise ValueError("La frequenza cardiaca deve essere maggiore di zero")
                 
                 self.config.set('heart_rates.max_hr', max_hr)
                 self.config.set('heart_rates.rest_hr', rest_hr)
                 
             except ValueError:
-                show_error("Error", "Heart rate must be a positive integer", parent=self)
+                show_error("Errore", "La frequenza cardiaca deve essere un intero positivo", parent=self)
                 return
             
-            # Save heart rate zones
-            # Check if we're using the new Treeview structure or the old entries
-            if hasattr(self, 'hr_tree'):
-                # Using Treeview for heart rate zones
-                heart_rates = self.config.get('heart_rates', {})
-                
-                # Make sure we keep max_hr and rest_hr in the config
-                heart_rates_to_save = {
-                    'max_hr': heart_rates.get('max_hr', max_hr),
-                    'rest_hr': heart_rates.get('rest_hr', rest_hr)
-                }
-                
-                # Get values from Treeview
-                for item in self.hr_tree.get_children():
-                    values = self.hr_tree.item(item, "values")
-                    name = values[0]
-                    value = values[1]
-                    
-                    # Skip max_hr and rest_hr as we already handled them
-                    if name in ['max_hr', 'rest_hr']:
-                        continue
-                    
-                    heart_rates_to_save[name] = value
-                
-                self.config.config['heart_rates'] = heart_rates_to_save
-                
-            elif hasattr(self, 'hr_entries'):
-                # Using old entry-based approach
-                for name, var in self.hr_entries.items():
-                    value = var.get()
-                    
-                    if value:
-                        if not validate_hr(value):
-                            show_error("Error", f"Invalid format for zone {name}", parent=self)
-                            return
-                        
-                        self.config.set(f'heart_rates.{name}', value)
-            
-            # Save heart rate margins
+            # Salva i margini HR
             try:
                 hr_up = int(self.hr_up_var.get())
                 hr_down = int(self.hr_down_var.get())
                 
                 if hr_up < 0 or hr_down < 0:
-                    raise ValueError("Heart rate margins must be greater than or equal to zero")
+                    raise ValueError("I margini di frequenza cardiaca devono essere maggiori o uguali a zero")
                 
                 self.config.set('hr_margins.hr_up', hr_up)
                 self.config.set('hr_margins.hr_down', hr_down)
                 
             except ValueError:
-                show_error("Error", "Heart rate margins must be non-negative integers", parent=self)
+                show_error("Errore", "I margini di frequenza cardiaca devono essere interi non negativi", parent=self)
                 return
             
-            # Save sport-specific zones
-            if sport == "running" or sport == "swimming":
-                # Pace zones
-                if hasattr(self, 'pace_tree'):
-                    # Using Treeview for pace zones
-                    paces_to_save = {}
-                    
-                    # Get values from Treeview
-                    for item in self.pace_tree.get_children():
-                        values = self.pace_tree.item(item, "values")
-                        name = values[0]
-                        value = values[1]
-                        paces_to_save[name] = value
-                    
-                    self.config.config['sports'][sport]['paces'] = paces_to_save
-                    
-                elif hasattr(self, 'pace_entries'):
-                    # Using old entry-based approach
-                    for name, var in self.pace_entries.items():
-                        value = var.get()
-                        
-                        if value:
-                            # Verify if it's a range (MM:SS-MM:SS)
-                            if "-" in value:
-                                parts = value.split("-")
-                                if len(parts) != 2 or not validate_pace(parts[0]) or not validate_pace(parts[1]):
-                                    show_error("Error", f"Invalid format for zone {name}", parent=self)
-                                    return
-                            # Verify if it's a single value (MM:SS)
-                            elif not validate_pace(value):
-                                show_error("Error", f"Invalid format for zone {name}", parent=self)
-                                return
-                            
-                            self.config.set(f'sports.{sport}.paces.{name}', value)
-                
-                # Pace margins
-                faster = self.pace_faster_var.get()
-                slower = self.pace_slower_var.get()
-                
-                if not validate_pace(faster) or not validate_pace(slower):
-                    show_error("Error", "Invalid format for pace margins", parent=self)
-                    return
-                
-                self.config.set(f'sports.{sport}.margins.faster', faster)
-                self.config.set(f'sports.{sport}.margins.slower', slower)
-                
-            elif sport == "cycling":
-                # FTP
-                try:
-                    ftp = int(self.ftp_var.get())
-                    
-                    if ftp <= 0:
-                        raise ValueError("FTP must be greater than zero")
-                    
-                    self.config.set('sports.cycling.power_values.ftp', ftp)
-                    
-                except ValueError:
-                    show_error("Error", "FTP must be a positive integer", parent=self)
-                    return
-                
-                # Power zones
-                if hasattr(self, 'power_tree'):
-                    # Using Treeview for power zones
-                    power_values = {}
-                    power_values['ftp'] = str(ftp)  # Make sure FTP is included
-                    
-                    # Get values from Treeview
-                    for item in self.power_tree.get_children():
-                        values = self.power_tree.item(item, "values")
-                        name = values[0]
-                        value = values[1]
-                        
-                        # Skip ftp as we already handled it
-                        if name == 'ftp':
-                            continue
-                        
-                        power_values[name] = value
-                    
-                    self.config.config['sports']['cycling']['power_values'] = power_values
-                    
-                elif hasattr(self, 'power_entries'):
-                    # Using old entry-based approach
-                    for name, var in self.power_entries.items():
-                        value = var.get()
-                        
-                        if value:
-                            if not validate_power(value):
-                                show_error("Error", f"Invalid format for zone {name}", parent=self)
-                                return
-                            
-                            self.config.set(f'sports.cycling.power_values.{name}', value)
-                
-                # Power margins
-                try:
-                    power_up = int(self.power_up_var.get())
-                    power_down = int(self.power_down_var.get())
-                    
-                    if power_up < 0 or power_down < 0:
-                        raise ValueError("Power margins must be greater than or equal to zero")
-                    
-                    self.config.set('sports.cycling.margins.power_up', power_up)
-                    self.config.set('sports.cycling.margins.power_down', power_down)
-                    
-                except ValueError:
-                    show_error("Error", "Power margins must be non-negative integers", parent=self)
-                    return
+            # Salva i margini di passo per la corsa
+            faster = self.running_pace_faster_var.get()
+            slower = self.running_pace_slower_var.get()
             
-            # Save the configuration
+            if not validate_pace(faster) or not validate_pace(slower):
+                show_error("Errore", "Formato non valido per i margini di passo della corsa", parent=self)
+                return
+            
+            self.config.set('sports.running.margins.faster', faster)
+            self.config.set('sports.running.margins.slower', slower)
+            
+            # Salva i margini di passo per il nuoto
+            faster = self.swimming_pace_faster_var.get()
+            slower = self.swimming_pace_slower_var.get()
+            
+            if not validate_pace(faster) or not validate_pace(slower):
+                show_error("Errore", "Formato non valido per i margini di passo del nuoto", parent=self)
+                return
+            
+            self.config.set('sports.swimming.margins.faster', faster)
+            self.config.set('sports.swimming.margins.slower', slower)
+            
+            # Salva FTP
+            try:
+                ftp = int(self.ftp_var.get())
+                
+                if ftp <= 0:
+                    raise ValueError("FTP deve essere maggiore di zero")
+                
+                self.config.set('sports.cycling.power_values.ftp', ftp)
+                
+            except ValueError:
+                show_error("Errore", "FTP deve essere un intero positivo", parent=self)
+                return
+            
+            # Salva i margini di potenza
+            try:
+                power_up = int(self.power_up_var.get())
+                power_down = int(self.power_down_var.get())
+                
+                if power_up < 0 or power_down < 0:
+                    raise ValueError("I margini di potenza devono essere maggiori o uguali a zero")
+                
+                self.config.set('sports.cycling.margins.power_up', power_up)
+                self.config.set('sports.cycling.margins.power_down', power_down)
+                
+            except ValueError:
+                show_error("Errore", "I margini di potenza devono essere interi non negativi", parent=self)
+                return
+            
+            # Salva la configurazione
             self.config.save()
             
-            # Show confirmation message
-            show_info("Configuration saved", 
-                   "Zones have been saved successfully", 
-                   parent=self)
+            # Mostra messaggio di conferma
+            show_info("Configurazione salvata", "Le zone sono state salvate con successo", parent=self)
             
-            # Update the status bar
-            self.controller.set_status("Training zones saved")
+            # Aggiorna la barra di stato
+            self.controller.set_status("Zone di allenamento salvate")
             
         except Exception as e:
-            logging.error(f"Error saving zones: {str(e)}")
-            show_error("Error", 
-                     f"Unable to save zones: {str(e)}", 
-                     parent=self)
+            logging.error(f"Errore nel salvataggio delle zone: {str(e)}")
+            show_error("Errore", f"Impossibile salvare le zone: {str(e)}", parent=self)
     
     def reset_zones(self):
         """Ripristina le zone ai valori predefiniti."""
@@ -969,102 +951,45 @@ class ZonesManagerFrame(ttk.Frame):
                        parent=self):
             return
         
-        # Ottieni lo sport selezionato
-        sport = self.sport_var.get()
+        # Ripristina i valori predefiniti
+        default_config = get_config(reset=True).config
         
-        # Ripristina i valori predefiniti per lo sport specifico
-        default_config = self.config.config
+        # Ripristina la frequenza cardiaca
+        self.max_hr_var.set(str(default_config['heart_rates']['max_hr']))
+        self.rest_hr_var.set(str(default_config['heart_rates']['rest_hr']))
         
-        if sport == "running":
-            # Zone di passo per la corsa
-            default_paces = default_config['sports']['running']['paces']
-            default_margins = default_config['sports']['running']['margins']
-            
-            # Imposta i valori
-            for name, var in self.pace_entries.items():
-                if name in default_paces:
-                    var.set(default_paces[name])
-            
-            # Margini
-            self.pace_faster_var.set(default_margins['faster'])
-            self.pace_slower_var.set(default_margins['slower'])
-            
-        elif sport == "cycling":
-            # Zone di potenza per il ciclismo
-            default_powers = default_config['sports']['cycling']['power_values']
-            default_margins = default_config['sports']['cycling']['margins']
-            
-            # FTP
-            self.ftp_var.set(default_powers['ftp'])
-            
-            # Imposta i valori
-            for name, var in self.power_entries.items():
-                if name in default_powers:
-                    var.set(default_powers[name])
-            
-            # Margini
-            self.power_up_var.set(str(default_margins['power_up']))
-            self.power_down_var.set(str(default_margins['power_down']))
-            
-        elif sport == "swimming":
-            # Zone di passo per il nuoto
-            default_paces = default_config['sports']['swimming']['paces']
-            default_margins = default_config['sports']['swimming']['margins']
-            
-            # Imposta i valori
-            for name, var in self.pace_entries.items():
-                if name in default_paces:
-                    var.set(default_paces[name])
-            
-            # Margini
-            self.pace_faster_var.set(default_margins['faster'])
-            self.pace_slower_var.set(default_margins['slower'])
+        # Ripristina i margini HR
+        self.hr_up_var.set(str(default_config['hr_margins']['hr_up']))
+        self.hr_down_var.set(str(default_config['hr_margins']['hr_down']))
         
-        # Ripristina le zone di frequenza cardiaca
-        default_hr = default_config['heart_rates']
-        default_hr_margins = default_config['hr_margins']
+        # Ripristina i margini di passo per la corsa
+        self.running_pace_faster_var.set(default_config['sports']['running']['margins']['faster'])
+        self.running_pace_slower_var.set(default_config['sports']['running']['margins']['slower'])
         
-        # FC max e riposo
-        self.max_hr_var.set(str(default_hr['max_hr']))
-        self.rest_hr_var.set(str(default_hr['rest_hr']))
+        # Ripristina i margini di passo per il nuoto
+        self.swimming_pace_faster_var.set(default_config['sports']['swimming']['margins']['faster'])
+        self.swimming_pace_slower_var.set(default_config['sports']['swimming']['margins']['slower'])
         
-        # Zone
-        for name, var in self.hr_entries.items():
-            if name in default_hr:
-                var.set(default_hr[name])
+        # Ripristina FTP
+        self.ftp_var.set(str(default_config['sports']['cycling']['power_values']['ftp']))
         
-        # Margini
-        self.hr_up_var.set(str(default_hr_margins['hr_up']))
-        self.hr_down_var.set(str(default_hr_margins['hr_down']))
+        # Ripristina i margini di potenza
+        self.power_up_var.set(str(default_config['sports']['cycling']['margins']['power_up']))
+        self.power_down_var.set(str(default_config['sports']['cycling']['margins']['power_down']))
+        
+        # Ripristina tutte le zone
+        self.config.config['heart_rates'] = default_config['heart_rates'].copy()
+        self.config.config['sports']['running']['paces'] = default_config['sports']['running']['paces'].copy()
+        self.config.config['sports']['swimming']['paces'] = default_config['sports']['swimming']['paces'].copy()
+        self.config.config['sports']['cycling']['power_values'] = default_config['sports']['cycling']['power_values'].copy()
+        
+        # Aggiorna le liste
+        self.load_zones()
         
         # Mostra messaggio di conferma
-        show_info("Zone ripristinate", 
-               "Le zone sono state ripristinate ai valori predefiniti", 
-               parent=self)
+        show_info("Zone ripristinate", "Le zone sono state ripristinate ai valori predefiniti", parent=self)
     
     def on_activate(self):
         """Chiamato quando il frame viene attivato."""
         # Aggiorna le zone
         self.load_zones()
-
-
-if __name__ == "__main__":
-    # Test del frame
-    root = tk.Tk()
-    root.title("Zones Manager Test")
-    root.geometry("1200x800")
-    
-    # Crea un notebook
-    notebook = ttk.Notebook(root)
-    notebook.pack(fill=tk.BOTH, expand=True)
-    
-    # Controller fittizio
-    class DummyController:
-        def set_status(self, message):
-            print(message)
-    
-    # Crea il frame
-    frame = ZonesManagerFrame(notebook, DummyController())
-    notebook.add(frame, text="Zone")
-    
-    root.mainloop()
