@@ -38,7 +38,10 @@ class WorkoutEditorFrame(ttk.Frame):
         self.parent = parent
         self.controller = controller
         self.config = get_config()
-        self.garmin_client = None
+        
+        # Carica la data della gara dal config e memorizza il formato interno
+        self._internal_race_day = self.config.get('planning.race_day', '')
+        self._internal_date = None
         
         # Lista degli allenamenti disponibili
         self.workouts = []
@@ -66,12 +69,36 @@ class WorkoutEditorFrame(ttk.Frame):
         def on_date_selected(date):
             """Callback per la selezione della data."""
             if date:
-                self.race_day_var.set(date)
+                # Memorizza la data interna in formato YYYY-MM-DD
+                self._internal_race_day = date
+                
+                # Converti per la visualizzazione in formato DD/MM/YYYY
+                try:
+                    year, month, day = date.split('-')
+                    formatted_date = f"{day}/{month}/{year}"
+                    self.race_day_var.set(formatted_date)
+                except:
+                    # In caso di errore, usa il formato originale
+                    self.race_day_var.set(date)
+        
+        # Ottieni la data iniziale (potrebbe essere già in formato DD/MM/YYYY)
+        initial_date = getattr(self, '_internal_race_day', None)
+        if not initial_date:
+            # Prova a convertire da DD/MM/YYYY a YYYY-MM-DD
+            current_date = self.race_day_var.get()
+            if current_date and '/' in current_date:
+                try:
+                    day, month, year = current_date.split('/')
+                    initial_date = f"{year}-{month}-{day}"
+                except:
+                    initial_date = current_date
+            else:
+                initial_date = current_date
         
         # Mostra il dialog
         date_picker = DatePickerDialog(self, 
                                     title="Seleziona la data della gara",
-                                    initial_date=self.race_day_var.get(),
+                                    initial_date=initial_date,
                                     callback=on_date_selected)
 
     def save_planning_config(self):
@@ -81,10 +108,28 @@ class WorkoutEditorFrame(ttk.Frame):
         
         # Salva la data della gara
         race_day = self.race_day_var.get()
-        if race_day and not is_valid_date(race_day):
-            show_error("Errore", "La data della gara deve essere nel formato YYYY-MM-DD", parent=self)
+        
+        # Converti da GG/MM/AAAA a YYYY-MM-DD per il salvataggio se necessario
+        race_day_internal = None
+        if race_day and '/' in race_day:
+            try:
+                day, month, year = race_day.split('/')
+                race_day_internal = f"{year}-{month}-{day}"
+            except:
+                race_day_internal = race_day
+        else:
+            race_day_internal = race_day
+        
+        # Verifica che la data sia valida
+        if race_day_internal and not is_valid_date(race_day_internal):
+            show_error("Errore", "Il formato della data non è valido", parent=self)
             return
-        self.config.set('planning.race_day', race_day)
+        
+        # Salva la data in formato YYYY-MM-DD
+        self.config.set('planning.race_day', race_day_internal)
+        
+        # Memorizza anche il formato interno
+        self._internal_race_day = race_day_internal
         
         # Salva i giorni preferiti
         preferred_days = []
@@ -100,6 +145,7 @@ class WorkoutEditorFrame(ttk.Frame):
                  "La configurazione di pianificazione è stata salvata", 
                  parent=self)
 
+
     def plan_workout_dates(self):
         """Pianifica le date degli allenamenti."""
         # Verifica che ci sia una data gara
@@ -108,9 +154,20 @@ class WorkoutEditorFrame(ttk.Frame):
             show_error("Errore", "Imposta prima la data della gara", parent=self)
             return
         
+        # Ottieni la data interna in formato YYYY-MM-DD
+        race_day_internal = None
+        if '/' in race_day:
+            try:
+                day, month, year = race_day.split('/')
+                race_day_internal = f"{year}-{month}-{day}"
+            except:
+                race_day_internal = race_day
+        else:
+            race_day_internal = race_day
+        
         # Verifica che la data gara sia valida
-        if not is_valid_date(race_day):
-            show_error("Errore", "La data della gara deve essere nel formato YYYY-MM-DD", parent=self)
+        if not is_valid_date(race_day_internal):
+            show_error("Errore", "Il formato della data non è valido", parent=self)
             return
         
         # Verifica che ci siano giorni preferiti
@@ -181,8 +238,8 @@ class WorkoutEditorFrame(ttk.Frame):
                        parent=self)
         
         # Calcola le date degli allenamenti
-        race_date = datetime.datetime.strptime(race_day, '%Y-%m-%d').date()
-        
+        race_date = datetime.datetime.strptime(race_day_internal, '%Y-%m-%d').date()       
+
         # Pianifica all'indietro a partire dalla data della gara
         dates = {}  # Dizionario settimana,sessione -> data
         
@@ -436,12 +493,22 @@ class WorkoutEditorFrame(ttk.Frame):
         race_frame = ttk.Frame(planning_frame)
         race_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(race_frame, text="Data Gara:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.race_day_var = tk.StringVar(value=self.config.get('planning.race_day', ''))
+        
+        # Converti la data interna per la visualizzazione
+        race_day_display = ""
+        if hasattr(self, '_internal_race_day') and self._internal_race_day:
+            try:
+                year, month, day = self._internal_race_day.split('-')
+                race_day_display = f"{day}/{month}/{year}"
+            except:
+                race_day_display = self._internal_race_day
+        
+        self.race_day_var = tk.StringVar(value=race_day_display)
         race_entry = ttk.Entry(race_frame, textvariable=self.race_day_var, width=15)
         race_entry.grid(row=0, column=1, sticky=tk.W)
         race_picker = ttk.Button(race_frame, text="Seleziona...", command=self.select_race_day)
         race_picker.grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
-        create_tooltip(race_entry, "Data della gara nel formato YYYY-MM-DD")
+        create_tooltip(race_entry, "Data della gara nel formato GG/MM/AAAA")
 
         # Giorni preferiti
         days_frame = ttk.Frame(planning_frame)
@@ -1150,14 +1217,38 @@ class WorkoutEditorFrame(ttk.Frame):
         def on_date_selected(date):
             """Callback per la selezione della data."""
             if date:
-                self.date_var.set(date)
-                # Segna come modificato
-                self.current_workout_modified = True
+                # Salva internamente nel formato YYYY-MM-DD
+                self._internal_date = date
+                
+                # Converti per la visualizzazione in formato DD/MM/YYYY
+                try:
+                    year, month, day = date.split('-')
+                    formatted_date = f"{day}/{month}/{year}"
+                    self.date_var.set(formatted_date)
+                    # Segna come modificato
+                    self.current_workout_modified = True
+                except:
+                    self.date_var.set(date)
+                    self.current_workout_modified = True
+        
+        # Se c'è una data interna memorizzata, usala per l'inizializzazione
+        initial_date = getattr(self, '_internal_date', None)
+        if not initial_date:
+            # Prova a convertire da DD/MM/YYYY a YYYY-MM-DD
+            current_date = self.date_var.get()
+            if current_date and '/' in current_date:
+                try:
+                    day, month, year = current_date.split('/')
+                    initial_date = f"{year}-{month}-{day}"
+                except:
+                    initial_date = current_date
+            else:
+                initial_date = current_date
         
         # Mostra il dialog
         date_picker = DatePickerDialog(self, 
                                     title="Seleziona la data dell'allenamento",
-                                    initial_date=self.date_var.get(),
+                                    initial_date=initial_date,
                                     callback=on_date_selected)
 
 
@@ -1551,7 +1642,12 @@ class WorkoutEditorFrame(ttk.Frame):
                 workout_date = ""
                 for step in workout.workout_steps:
                     if hasattr(step, 'date') and step.date:
-                        workout_date = step.date
+                        # Converti la data da YYYY-MM-DD a DD/MM/YYYY per la visualizzazione
+                        try:
+                            year, month, day = step.date.split('-')
+                            workout_date = f"{day}/{month}/{year}"
+                        except:
+                            workout_date = step.date
                         break
                 
                 # Aggiorna i campi
@@ -1609,7 +1705,15 @@ class WorkoutEditorFrame(ttk.Frame):
                         # Aggiorna i campi
                         self.name_var.set(workout.workout_name)
                         self.sport_var.set(workout.sport_type)
-                        self.date_var.set(workout_date)
+                        if workout_date:
+                            try:
+                                year, month, day = workout_date.split('-')
+                                self.date_var.set(f"{day}/{month}/{year}")
+                            except:
+                                self.date_var.set(workout_date)
+                        else:
+                            self.date_var.set("")
+
                         self.description_var.set(workout.description or "")
                         
                         # Aggiorna la lista degli step
@@ -2320,8 +2424,16 @@ class WorkoutEditorFrame(ttk.Frame):
         if not self.current_workout:
             return
         
-        # Valida la data
+        # Ottieni la data dall'interfaccia e convertila se necessario
         date_str = self.date_var.get()
+        if date_str and '/' in date_str:
+            try:
+                day, month, year = date_str.split('/')
+                date_str = f"{year}-{month}-{day}"
+            except:
+                pass  # Mantieni il formato originale se la conversione fallisce
+        
+        # Valida la data
         if date_str and not is_valid_date(date_str):
             show_error("Errore", "La data deve essere nel formato YYYY-MM-DD", parent=self)
             return

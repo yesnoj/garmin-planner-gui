@@ -103,7 +103,7 @@ class WorkoutStepDialog(tk.Toplevel):
         
         # Configura il dialog
         self.title("Step di allenamento")
-        self.geometry("500x550")
+        self.geometry("500x650")
         self.transient(parent)
         self.grab_set()
         
