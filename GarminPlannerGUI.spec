@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\f85694b\\Documents\\GitHub\\garmin-planner-gui\\config.yaml', '.')],
+    datas=[('C:\\Users\\f85694b\\Documents\\GitHub\\garmin-planner-gui\\config.yaml', '.'), ('C:\\Users\\f85694b\\Documents\\GitHub\\garmin-planner-gui\\assets', 'assets')],
     hiddenimports=['pandas', 'openpyxl', 'yaml', 'garth', 'tkinter', 'calendar', 're', 'logging', 'json'],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['C:\\Users\\f85694b\\Documents\\GitHub\\garmin-planner-gui\\assets\\garmin_planner_icon.ico'],
 )

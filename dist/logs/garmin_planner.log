@@ -135,3 +135,10 @@
 2025-05-16 08:58:52,755 - root - INFO - Logged in as jonsey2383@gmail.com
 2025-05-16 09:04:02,247 - root - INFO - Configuration saved to config.yaml
 2025-05-16 09:04:02,386 - root - INFO - GarminPlannerGUI terminated.
+2025-05-16 18:32:37,032 - root - INFO - Logging setup completed.
+2025-05-16 18:32:37,032 - root - INFO - Starting GarminPlannerGUI...
+2025-05-16 18:32:37,033 - root - INFO - Directory 'training_plans' creata.
+2025-05-16 18:32:38,757 - root - INFO - Configuration loaded from config.yaml
+2025-05-16 18:32:38,975 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-16 18:32:41,506 - root - INFO - Configuration saved to config.yaml
+2025-05-16 18:32:41,586 - root - INFO - GarminPlannerGUI terminated.
