@@ -50,6 +50,86 @@ def create_tooltip(widget, text: str) -> None:
     tooltip.set_text(text)
 
 
+
+def convert_date_for_garmin(date_str: str) -> str:
+    """
+    Converte una data dal formato GG/MM/AAAA al formato YYYY-MM-DD richiesto da Garmin.
+    Se la data è già nel formato YYYY-MM-DD, la restituisce invariata.
+    
+    Args:
+        date_str: Data nel formato GG/MM/AAAA o YYYY-MM-DD
+        
+    Returns:
+        Data nel formato YYYY-MM-DD
+    """
+    if not date_str:
+        return ""
+        
+    # Se è già nel formato YYYY-MM-DD, restituiscila invariata
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        return date_str
+        
+    # Se è nel formato GG/MM/AAAA, convertila
+    if re.match(r'^\d{1,2}/\d{1,2}/\d{4}$', date_str):
+        try:
+            day, month, year = date_str.split('/')
+            # Assicuriamoci che giorno e mese siano di due cifre
+            day = day.zfill(2)
+            month = month.zfill(2)
+            return f"{year}-{month}-{day}"
+        except:
+            return date_str
+            
+    # Se il formato non è riconosciuto, restituisci la stringa originale
+    return date_str
+
+
+def is_valid_display_date(date_str: str) -> bool:
+    """
+    Verifica che una stringa sia una data valida nel formato GG/MM/AAAA o YYYY-MM-DD.
+    
+    Args:
+        date_str: Stringa da verificare
+        
+    Returns:
+        True se la stringa è una data valida, False altrimenti
+    """
+    if not date_str:
+        return True
+    
+    # Verifica il formato GG/MM/AAAA
+    if re.match(r'^\d{1,2}/\d{1,2}/\d{4}$', date_str):
+        try:
+            day, month, year = date_str.split('/')
+            day = int(day)
+            month = int(month)
+            year = int(year)
+            
+            # Verifica che i valori siano validi
+            if month < 1 or month > 12 or day < 1:
+                return False
+                
+            # Verifica il numero di giorni nel mese
+            import calendar
+            max_days = calendar.monthrange(year, month)[1]
+            return day <= max_days
+        except (ValueError, TypeError):
+            return False
+    
+    # Verifica il formato YYYY-MM-DD
+    elif re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+        try:
+            # Converte in data
+            from datetime import datetime
+            datetime.strptime(date_str, '%Y-%m-%d')
+            return True
+        except ValueError:
+            return False
+    
+    # Formato non riconosciuto
+    return False
+
+
 def create_scrollable_frame(parent) -> Tuple[ttk.Frame, ttk.Frame]:
     """
     Crea un frame con scrollbar.

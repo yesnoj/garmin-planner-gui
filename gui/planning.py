@@ -12,6 +12,7 @@ from tkinter import ttk, messagebox, simpledialog
 import calendar
 import datetime
 import re
+from datetime import datetime  # Importazione specifica per datetime.strptime
 from typing import Dict, Any, List, Tuple, Optional, Callable
 
 from config import get_config
@@ -19,7 +20,8 @@ from models.workout import Workout
 from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
     format_workout_name, parse_workout_name, get_weeks_from_workouts,
-    get_sessions_per_week, extract_sport_from_steps, date_to_weekday
+    get_sessions_per_week, extract_sport_from_steps, date_to_weekday,
+    is_valid_date, convert_date_for_garmin, is_valid_display_date
 )
 from gui.styles import get_color_for_sport, get_icon_for_sport
 from gui.dialogs.date_picker import DatePickerDialog
@@ -251,15 +253,18 @@ class ScheduleDialog(tk.Toplevel):
             return
         
         # Verifica che ci sia una data di gara
-        race_day = self.race_day_var.get()
-        if not race_day:
+        race_day_display = self.race_day_var.get()
+        if not race_day_display:
             show_error("Errore", "Inserisci la data della gara", parent=self)
             return
         
-        # Verifica che la data sia valida
-        if not re.match(r'^\d{4}-\d{2}-\d{2}$', race_day):
-            show_error("Errore", "La data della gara deve essere nel formato YYYY-MM-DD", parent=self)
+        # Verifica che la data sia valida nel formato di visualizzazione (GG/MM/AAAA)
+        if not is_valid_display_date(race_day_display):
+            show_error("Errore", "La data della gara deve essere nel formato GG/MM/AAAA", parent=self)
             return
+        
+        # Converti la data nel formato richiesto da Garmin Connect (YYYY-MM-DD)
+        race_day = convert_date_for_garmin(race_day_display)
         
         # Estrai il numero di settimana
         week = int(week_str.split()[-1])
@@ -329,12 +334,24 @@ class ScheduleDialog(tk.Toplevel):
             # Aggiungi la data all'allenamento
             date_str = date.strftime('%Y-%m-%d')
             
+            # Converti la data in formato di visualizzazione (GG/MM/AAAA)
+            display_date = date.strftime('%d/%m/%Y')
+            
             # Verifica se c'è già un allenamento per questa data
             for i, (existing_date, existing_name, existing_workout) in enumerate(self.scheduled_workouts):
+                # Converti la data esistente in GG/MM/AAAA per il confronto con l'utente
+                existing_display_date = ""
+                if existing_date and is_valid_date(existing_date):
+                    try:
+                        year, month, day = existing_date.split('-')
+                        existing_display_date = f"{day}/{month}/{year}"
+                    except:
+                        existing_display_date = existing_date
+                
                 if existing_date == date_str:
                     # Chiedi se sovrascrivere
                     if not ask_yes_no("Sovrascrivere", 
-                                    f"C'è già un allenamento '{existing_name}' pianificato per {date_str}. Vuoi sostituirlo?", 
+                                    f"C'è già un allenamento '{existing_name}' pianificato per {existing_display_date}. Vuoi sostituirlo?", 
                                     parent=self):
                         continue
                     
@@ -425,11 +442,20 @@ class ScheduleDialog(tk.Toplevel):
             # Calcola il giorno della settimana
             weekday = date_to_weekday(date_str)
             
+            # Converti la data dal formato YYYY-MM-DD al formato DD/MM/YYYY per la visualizzazione
+            display_date = date_str
+            if is_valid_date(date_str):
+                try:
+                    year, month, day = date_str.split('-')
+                    display_date = f"{day}/{month}/{year}"
+                except:
+                    display_date = date_str
+            
             # Aggiungi alla lista
             self.schedule_tree.insert("", "end", 
-                                    values=(date_str, name, f"{sport_icon} {workout.sport_type}", days[weekday]), 
+                                    values=(display_date, name, f"{sport_icon} {workout.sport_type}", days[weekday]), 
                                     tags=(date_str,))
-    
+        
     def on_ok(self):
         """Gestisce il click sul pulsante OK."""
         # Salva la data della gara nella configurazione

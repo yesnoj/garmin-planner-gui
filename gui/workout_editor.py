@@ -12,13 +12,14 @@ import re
 import json
 import datetime
 from typing import Dict, Any, List, Tuple, Optional
+from datetime import datetime
 
 from config import get_config
 from auth import GarminClient
 from models.workout import Workout, WorkoutStep, Target
 from gui.utils import (
     create_tooltip, show_error, show_info, show_warning, ask_yes_no,
-    create_scrollable_frame, is_valid_date
+    create_scrollable_frame, is_valid_date, convert_date_for_garmin, is_valid_display_date
 )
 from gui.styles import get_icon_for_sport, get_icon_for_step, get_color_for_step
 
@@ -81,19 +82,12 @@ class WorkoutEditorFrame(ttk.Frame):
                     # In caso di errore, usa il formato originale
                     self.race_day_var.set(date)
         
-        # Ottieni la data iniziale (potrebbe essere già in formato DD/MM/YYYY)
+        # Ottieni la data iniziale (potrebbe essere già in formato YYYY-MM-DD)
         initial_date = getattr(self, '_internal_race_day', None)
         if not initial_date:
             # Prova a convertire da DD/MM/YYYY a YYYY-MM-DD
             current_date = self.race_day_var.get()
-            if current_date and '/' in current_date:
-                try:
-                    day, month, year = current_date.split('/')
-                    initial_date = f"{year}-{month}-{day}"
-                except:
-                    initial_date = current_date
-            else:
-                initial_date = current_date
+            initial_date = convert_date_for_garmin(current_date)
         
         # Mostra il dialog
         date_picker = DatePickerDialog(self, 
@@ -107,18 +101,10 @@ class WorkoutEditorFrame(ttk.Frame):
         self.config.set('athlete_name', self.athlete_name_var.get())
         
         # Salva la data della gara
-        race_day = self.race_day_var.get()
+        race_day_display = self.race_day_var.get()
         
-        # Converti da GG/MM/AAAA a YYYY-MM-DD per il salvataggio se necessario
-        race_day_internal = None
-        if race_day and '/' in race_day:
-            try:
-                day, month, year = race_day.split('/')
-                race_day_internal = f"{year}-{month}-{day}"
-            except:
-                race_day_internal = race_day
-        else:
-            race_day_internal = race_day
+        # Converti da GG/MM/AAAA a YYYY-MM-DD per il salvataggio
+        race_day_internal = convert_date_for_garmin(race_day_display)
         
         # Verifica che la data sia valida
         if race_day_internal and not is_valid_date(race_day_internal):
@@ -1236,21 +1222,13 @@ class WorkoutEditorFrame(ttk.Frame):
         if not initial_date:
             # Prova a convertire da DD/MM/YYYY a YYYY-MM-DD
             current_date = self.date_var.get()
-            if current_date and '/' in current_date:
-                try:
-                    day, month, year = current_date.split('/')
-                    initial_date = f"{year}-{month}-{day}"
-                except:
-                    initial_date = current_date
-            else:
-                initial_date = current_date
+            initial_date = convert_date_for_garmin(current_date)
         
         # Mostra il dialog
         date_picker = DatePickerDialog(self, 
                                     title="Seleziona la data dell'allenamento",
                                     initial_date=initial_date,
                                     callback=on_date_selected)
-
 
     def delete_workout(self):
         """Elimina gli allenamenti selezionati."""
@@ -1315,8 +1293,29 @@ class WorkoutEditorFrame(ttk.Frame):
             # Rimuovi gli allenamenti dalla lista workouts
             self.workouts = [(wid, wdata) for wid, wdata in self.workouts if wid not in workout_ids_to_remove]
             
-            # Aggiorna la lista degli allenamenti
-            self.update_workout_list()
+            # Rimuovi gli elementi selezionati dalla vista dell'albero
+            for item in selection:
+                self.workout_tree.delete(item)
+            
+            # Se è stato eliminato l'allenamento attualmente caricato nell'editor, pulisci l'editor
+            if self.current_workout_id and self.current_workout_id in workout_ids_to_remove:
+                self.current_workout = None
+                self.current_workout_id = None
+                self.current_workout_modified = False
+                
+                # Pulisci i campi dell'editor
+                self.name_var.set("")
+                self.sport_var.set("running")
+                self.date_var.set("")
+                self.description_var.set("")
+                
+                # Aggiorna la lista degli step (la svuota)
+                self.update_steps_list()
+                
+                # Disabilita i pulsanti
+                self.save_button.config(state="disabled")
+                self.send_button.config(state="disabled")
+                self.discard_button.config(state="disabled")
             
             # Mostra messaggio di conferma
             if eliminated > 0 and local_eliminated > 0:
@@ -1331,7 +1330,7 @@ class WorkoutEditorFrame(ttk.Frame):
                 show_info("Allenamenti eliminati", 
                        f"Eliminati {local_eliminated} allenamenti locali", 
                        parent=self)
-                
+                    
         else:  # source == "imported"
             import_export_frame = self.controller.import_export
             
@@ -1353,14 +1352,43 @@ class WorkoutEditorFrame(ttk.Frame):
                 if index < len(import_export_frame.imported_workouts):
                     del import_export_frame.imported_workouts[index]
             
-            # Ricarica la lista degli allenamenti importati
+            # Rimuovi gli elementi selezionati dalla vista dell'albero
+            for item in selection:
+                self.workout_tree.delete(item)
+            
+            # Ricarica la lista degli allenamenti importati (necessario per aggiornare gli indici)
             self.load_imported_workouts()
-            self.update_workout_list()
+            
+            # Se è stato eliminato l'allenamento attualmente caricato nell'editor, pulisci l'editor
+            if self.current_workout_id and self.current_workout_id.startswith("imported_"):
+                try:
+                    index = int(self.current_workout_id.split("_")[1])
+                    if index in indices_to_remove:
+                        self.current_workout = None
+                        self.current_workout_id = None
+                        self.current_workout_modified = False
+                        
+                        # Pulisci i campi dell'editor
+                        self.name_var.set("")
+                        self.sport_var.set("running")
+                        self.date_var.set("")
+                        self.description_var.set("")
+                        
+                        # Aggiorna la lista degli step (la svuota)
+                        self.update_steps_list()
+                        
+                        # Disabilita i pulsanti
+                        self.save_button.config(state="disabled")
+                        self.send_button.config(state="disabled")
+                        self.discard_button.config(state="disabled")
+                except (ValueError, IndexError):
+                    pass
             
             # Mostra messaggio di conferma
             show_info("Allenamenti eliminati", 
                    f"Eliminati {len(indices_to_remove)} allenamenti dalla lista degli importati", 
                    parent=self)
+
 
     def on_workout_selected(self, event):
         """
@@ -2424,19 +2452,14 @@ class WorkoutEditorFrame(ttk.Frame):
         if not self.current_workout:
             return
         
-        # Ottieni la data dall'interfaccia e convertila se necessario
-        date_str = self.date_var.get()
-        if date_str and '/' in date_str:
-            try:
-                day, month, year = date_str.split('/')
-                date_str = f"{year}-{month}-{day}"
-            except:
-                pass  # Mantieni il formato originale se la conversione fallisce
-        
-        # Valida la data
-        if date_str and not is_valid_date(date_str):
-            show_error("Errore", "La data deve essere nel formato YYYY-MM-DD", parent=self)
+        # Ottieni la data dall'interfaccia e verificala
+        display_date_str = self.date_var.get()
+        if display_date_str and not is_valid_display_date(display_date_str):
+            show_error("Errore", "La data deve essere nel formato GG/MM/AAAA", parent=self)
             return
+        
+        # Converti la data nel formato interno YYYY-MM-DD
+        date_str = convert_date_for_garmin(display_date_str)
         
         # Aggiorna i dati dell'allenamento dai campi
         self.current_workout.workout_name = self.name_var.get()
@@ -2548,18 +2571,23 @@ class WorkoutEditorFrame(ttk.Frame):
             show_info("Allenamento salvato", 
                    f"L'allenamento '{self.current_workout.workout_name}' è stato salvato nella lista degli importati", 
                    parent=self)
-    
+        
     def send_to_garmin(self):
         """Invia l'allenamento corrente a Garmin Connect."""
         # Verifica che ci sia un allenamento corrente
         if not self.current_workout:
             return
         
-        # Valida la data
-        date_str = self.date_var.get()
-        if date_str and not is_valid_date(date_str):
-            show_error("Errore", "La data deve essere nel formato YYYY-MM-DD", parent=self)
+        # Ottieni la data dall'interfaccia
+        display_date_str = self.date_var.get()
+        
+        # Verifica che la data sia in un formato valido (GG/MM/AAAA o YYYY-MM-DD)
+        if display_date_str and not is_valid_display_date(display_date_str):
+            show_error("Errore", "La data deve essere nel formato GG/MM/AAAA", parent=self)
             return
+        
+        # Converti la data nel formato richiesto da Garmin Connect (YYYY-MM-DD)
+        date_str = convert_date_for_garmin(display_date_str)
         
         # Aggiorna i dati dell'allenamento dai campi
         self.current_workout.workout_name = self.name_var.get()
@@ -2576,12 +2604,12 @@ class WorkoutEditorFrame(ttk.Frame):
                 break
         
         # Se c'è una data nel campo
-        if date_str:
+        if display_date_str:
             if date_step:
-                # Aggiorna lo step esistente
+                # Aggiorna lo step esistente con la data convertita
                 date_step.date = date_str
             else:
-                # Crea un nuovo step con la data
+                # Crea un nuovo step con la data convertita
                 date_step = WorkoutStep(0, "warmup")
                 date_step.date = date_str
                 # Aggiungi come primo step
@@ -2596,6 +2624,9 @@ class WorkoutEditorFrame(ttk.Frame):
             return
         
         try:
+            # Informare l'utente che l'invio è in corso
+            self.controller.set_status("Invio dell'allenamento a Garmin Connect in corso...")
+            
             # Crea un nuovo allenamento su Garmin Connect
             response = self.garmin_client.add_workout(self.current_workout)
             
@@ -2603,37 +2634,75 @@ class WorkoutEditorFrame(ttk.Frame):
             if response and 'workoutId' in response:
                 new_workout_id = str(response['workoutId'])
                 
+                # Informare l'utente che l'allenamento è stato creato
+                self.controller.set_status(f"Allenamento creato su Garmin Connect (ID: {new_workout_id})")
+                
                 # Se era un allenamento locale, rimuovilo dalla lista locale
                 if self.current_workout_id and self.current_workout_id.startswith("local_"):
                     for i, (workout_id, workout_data) in enumerate(self.workouts):
                         if workout_id == self.current_workout_id:
+                            # Rimuovi il vecchio allenamento dalla lista workouts
                             self.workouts.pop(i)
                             break
                 
                 # Aggiorna l'ID corrente
+                old_workout_id = self.current_workout_id
                 self.current_workout_id = new_workout_id
                 
                 # Pianifica l'allenamento se è specificata una data
                 if date_str:
+                    self.controller.set_status(f"Pianificazione dell'allenamento per {display_date_str}...")
                     schedule_response = self.garmin_client.schedule_workout(new_workout_id, date_str)
                     if not schedule_response:
                         logging.warning(f"Impossibile pianificare l'allenamento per la data {date_str}")
+                        self.controller.set_status("Allenamento creato ma non pianificato")
+                    else:
+                        self.controller.set_status(f"Allenamento pianificato per {display_date_str}")
                 
                 # Resetta il flag di modifica
                 self.current_workout_modified = False
                 
-                # Aggiorna la lista degli allenamenti
-                self.refresh_workouts()
+                # Aggiorna la lista degli allenamenti da Garmin Connect
+                self.controller.set_status("Aggiornamento della lista allenamenti...")
+                workouts_data = self.garmin_client.list_workouts()
+                
+                # Conserva gli allenamenti locali
+                local_workouts = [(wid, wdata) for wid, wdata in self.workouts if wid.startswith("local_") or (isinstance(wdata, dict) and wdata.get('local', False))]
+                
+                # Trasforma in una lista di tuple (id, data)
+                garmin_workouts = []
+                for workout in workouts_data:
+                    workout_id = str(workout.get('workoutId', ''))
+                    garmin_workouts.append((workout_id, workout))
+                
+                # Unisci gli allenamenti Garmin con quelli locali
+                self.workouts = garmin_workouts + local_workouts
+                
+                # Cancella completamente la lista visibile
+                for item in self.workout_tree.get_children():
+                    self.workout_tree.delete(item)
+                    
+                # Aggiungi tutti gli allenamenti alla UI
+                self.update_workout_list()
+                
+                # Seleziona il nuovo allenamento nell'albero
+                for item in self.workout_tree.get_children():
+                    if self.workout_tree.item(item, "tags")[0] == new_workout_id:
+                        self.workout_tree.selection_set(item)
+                        self.workout_tree.see(item)  # Assicura che sia visibile
+                        break
                 
                 # Mostra messaggio di conferma
                 if date_str:
                     show_info("Allenamento inviato e pianificato", 
-                           f"L'allenamento '{self.current_workout.workout_name}' è stato inviato a Garmin Connect e pianificato per il {date_str}", 
+                           f"L'allenamento '{self.current_workout.workout_name}' è stato inviato a Garmin Connect e pianificato per il {display_date_str}", 
                            parent=self)
+                    self.controller.set_status(f"Allenamento '{self.current_workout.workout_name}' inviato e pianificato per {display_date_str}")
                 else:
                     show_info("Allenamento inviato", 
                            f"L'allenamento '{self.current_workout.workout_name}' è stato inviato a Garmin Connect", 
                            parent=self)
+                    self.controller.set_status(f"Allenamento '{self.current_workout.workout_name}' inviato a Garmin Connect")
             else:
                 raise ValueError("Risposta non valida da Garmin Connect")
             
@@ -2642,7 +2711,8 @@ class WorkoutEditorFrame(ttk.Frame):
             show_error("Errore", 
                      f"Impossibile inviare l'allenamento: {str(e)}", 
                      parent=self)
-    
+            self.controller.set_status(f"Errore: {str(e)}")
+        
     def discard_changes(self):
         """Annulla le modifiche all'allenamento corrente."""
         # Verifica che ci sia un allenamento corrente e modifiche
