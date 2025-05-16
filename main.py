@@ -30,6 +30,16 @@ def setup_logging(log_level=logging.INFO):
     # Log di debug se viene specificato
     logging.info("Logging setup completed.")
 
+def create_required_directories():
+    """Crea tutte le directory necessarie per l'applicazione."""
+    # Crea una directory training_plans se non esiste
+    training_plans_dir = 'training_plans'
+    if not os.path.exists(training_plans_dir):
+        os.makedirs(training_plans_dir)
+        logging.info(f"Directory '{training_plans_dir}' creata.")
+    else:
+        logging.info(f"Directory '{training_plans_dir}' già esistente.")
+
 def parse_arguments():
     """Parsa gli argomenti da linea di comando."""
     parser = argparse.ArgumentParser(description='GarminPlannerGUI - Applicazione per la gestione avanzata di allenamenti su Garmin Connect')
@@ -51,6 +61,9 @@ def main():
         setup_logging()
     
     logging.info("Starting GarminPlannerGUI...")
+    
+    # Crea le directory necessarie
+    create_required_directories()
     
     # Importa il modulo app solo dopo la configurazione del logging
     from gui.app import GarminPlannerApp

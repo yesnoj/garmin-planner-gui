@@ -1,0 +1,137 @@
+2025-05-15 17:43:12,529 - root - INFO - Logging setup completed.
+2025-05-15 17:43:12,529 - root - INFO - Starting GarminPlannerGUI...
+2025-05-15 17:43:14,303 - root - INFO - Configuration file config.yaml not found, using defaults
+2025-05-15 17:43:14,472 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-15 17:43:37,158 - root - INFO - Configuration saved to config.yaml
+2025-05-15 17:43:37,239 - root - INFO - GarminPlannerGUI terminated.
+2025-05-16 08:56:57,479 - root - INFO - Logging setup completed.
+2025-05-16 08:56:57,479 - root - INFO - Starting GarminPlannerGUI...
+2025-05-16 08:56:59,347 - root - INFO - Configuration loaded from config.yaml
+2025-05-16 08:56:59,507 - root - WARNING - Session file C:\Users\f85694b/.garth\session.json not found
+2025-05-16 08:57:29,522 - root - INFO - Configuration saved to config.yaml
+2025-05-16 08:57:29,542 - root - INFO - Configurazione importata con successo
+2025-05-16 08:57:29,554 - root - INFO - Foglio 'Paces' trovato. Colonne: ['Name', 'Value', 'Note']
+2025-05-16 08:57:29,556 - root - INFO - Sezioni trovate: ['RITMI PER LA CORSA (min/km)', 'POTENZA PER IL CICLISMO (Watt)', 'PASSI VASCA PER IL NUOTO (min/100m)']
+2025-05-16 08:57:29,556 - root - INFO - Sezione trovata: running
+2025-05-16 08:57:29,556 - root - INFO - Raccolto running pace: Z1 = 6:30
+2025-05-16 08:57:29,556 - root - INFO - Raccolto running pace: Z2 = 6:20
+2025-05-16 08:57:29,556 - root - INFO - Raccolto running pace: Z3 = 5:50
+2025-05-16 08:57:29,556 - root - INFO - Raccolto running pace: Z4 = 5:30
+2025-05-16 08:57:29,557 - root - INFO - Raccolto running pace: Z5 = 4:50
+2025-05-16 08:57:29,557 - root - INFO - Sezione trovata: cycling
+2025-05-16 08:57:29,557 - root - INFO - Raccolto cycling power: ftp = 250
+2025-05-16 08:57:29,557 - root - INFO - Raccolto cycling power: Z1 = 125-175
+2025-05-16 08:57:29,557 - root - INFO - Raccolto cycling power: Z2 = 175-215
+2025-05-16 08:57:29,557 - root - INFO - Raccolto cycling power: Z3 = 215-250
+2025-05-16 08:57:29,557 - root - INFO - Raccolto cycling power: Z4 = 250-300
+2025-05-16 08:57:29,558 - root - INFO - Raccolto cycling power: Z5 = 300-375
+2025-05-16 08:57:29,558 - root - INFO - Raccolto cycling power: Z6 = 375+
+2025-05-16 08:57:29,558 - root - INFO - Raccolto cycling power: recovery = <125
+2025-05-16 08:57:29,558 - root - INFO - Sezione trovata: swimming
+2025-05-16 08:57:29,558 - root - INFO - Raccolto swimming pace: Z1 = 2:30-2:15
+2025-05-16 08:57:29,558 - root - INFO - Raccolto swimming pace: Z2 = 2:15-2:00
+2025-05-16 08:57:29,558 - root - INFO - Raccolto swimming pace: Z3 = 2:00-1:45
+2025-05-16 08:57:29,558 - root - INFO - Raccolto swimming pace: Z4 = 1:45-1:30
+2025-05-16 08:57:29,559 - root - INFO - Raccolto swimming pace: Z5 = 1:30-1:15
+2025-05-16 08:57:29,559 - root - INFO - Sezione 'sports.running.paces' sostituita completamente con nuovi dati
+2025-05-16 08:57:29,559 - root - INFO - Sostituita sezione running paces con 5 valori
+2025-05-16 08:57:29,559 - root - INFO - Sezione 'sports.cycling.power_values' sostituita completamente con nuovi dati
+2025-05-16 08:57:29,559 - root - INFO - Sostituita sezione cycling powers con 8 valori
+2025-05-16 08:57:29,559 - root - INFO - Sezione 'sports.swimming.paces' sostituita completamente con nuovi dati
+2025-05-16 08:57:29,559 - root - INFO - Sostituita sezione swimming paces con 5 valori
+2025-05-16 08:57:29,559 - root - INFO - Valori di pace/potenza importati con successo
+2025-05-16 08:57:29,571 - root - INFO - Foglio 'HeartRates' trovato. Colonne: ['Name', 'Value', 'Description']
+2025-05-16 08:57:29,571 - root - INFO - Raccolto heart rate: max_hr = 180
+2025-05-16 08:57:29,571 - root - INFO - Raccolto heart rate: Z1_HR = 62-76% max_hr
+2025-05-16 08:57:29,572 - root - INFO - Raccolto heart rate: Z2_HR = 76-85% max_hr
+2025-05-16 08:57:29,572 - root - INFO - Raccolto heart rate: Z3_HR = 85-91% max_hr
+2025-05-16 08:57:29,572 - root - INFO - Raccolto heart rate: Z4_HR = 91-95% max_hr
+2025-05-16 08:57:29,572 - root - INFO - Raccolto heart rate: Z5_HR = 95-100% max_hr
+2025-05-16 08:57:29,572 - root - INFO - Raccolto heart rate: rest_hr = 60
+2025-05-16 08:57:29,572 - root - INFO - Sezione 'heart_rates' sostituita completamente con nuovi dati
+2025-05-16 08:57:29,572 - root - INFO - Sostituita sezione heart rates con 7 valori
+2025-05-16 08:57:29,572 - root - INFO - Valori di frequenza cardiaca importati con successo
+2025-05-16 08:57:29,576 - root - INFO - Configuration saved to config.yaml
+2025-05-16 08:57:29,590 - root - INFO - Foglio 'Workouts' trovato. Colonne: ['Week', 'Session', 'Date', 'Sport', 'Description', 'Steps']
+2025-05-16 08:57:29,590 - root - INFO - Numero di righe nel foglio: 19
+2025-05-16 08:57:29,591 - root - INFO - Trovate 19 righe di allenamenti
+2025-05-16 08:57:29,592 - root - INFO - Processando allenamento: W1D1 - Ripetute 55'
+2025-05-16 08:57:29,592 - root - INFO - Sport: Running, Date: 05/05/2025
+2025-05-16 08:57:29,592 - root - INFO - Parsing steps per 'W1D1 - Ripetute 55''
+2025-05-16 08:57:29,592 - root - INFO - Allenamento 'W1D1 - Ripetute 55'' importato con successo, con 4 step
+2025-05-16 08:57:29,592 - root - INFO - Processando allenamento: W1D2 - EasyRun 40' + 4A
+2025-05-16 08:57:29,593 - root - INFO - Sport: Running, Date: 07/05/2025
+2025-05-16 08:57:29,593 - root - INFO - Parsing steps per 'W1D2 - EasyRun 40' + 4A'
+2025-05-16 08:57:29,593 - root - INFO - Allenamento 'W1D2 - EasyRun 40' + 4A' importato con successo, con 3 step
+2025-05-16 08:57:29,593 - root - INFO - Processando allenamento: W1D3 - Progressivo 35'
+2025-05-16 08:57:29,593 - root - INFO - Sport: Running, Date: 09/05/2025
+2025-05-16 08:57:29,593 - root - INFO - Parsing steps per 'W1D3 - Progressivo 35''
+2025-05-16 08:57:29,593 - root - INFO - Allenamento 'W1D3 - Progressivo 35'' importato con successo, con 4 step
+2025-05-16 08:57:29,593 - root - INFO - Processando allenamento: W1D4 - Lungo 60'
+2025-05-16 08:57:29,593 - root - INFO - Sport: Running, Date: 10/05/2025
+2025-05-16 08:57:29,594 - root - INFO - Parsing steps per 'W1D4 - Lungo 60''
+2025-05-16 08:57:29,594 - root - INFO - Allenamento 'W1D4 - Lungo 60'' importato con successo, con 3 step
+2025-05-16 08:57:29,594 - root - INFO - Processando allenamento: W2D1 - Ripetute 35'
+2025-05-16 08:57:29,594 - root - INFO - Sport: Running, Date: 12/05/2025
+2025-05-16 08:57:29,594 - root - INFO - Parsing steps per 'W2D1 - Ripetute 35''
+2025-05-16 08:57:29,594 - root - INFO - Allenamento 'W2D1 - Ripetute 35'' importato con successo, con 4 step
+2025-05-16 08:57:29,594 - root - INFO - Processando allenamento: W2D2 - EasyRun 30' + 3A
+2025-05-16 08:57:29,594 - root - INFO - Sport: Running, Date: 14/05/2025
+2025-05-16 08:57:29,594 - root - INFO - Parsing steps per 'W2D2 - EasyRun 30' + 3A'
+2025-05-16 08:57:29,595 - root - INFO - Allenamento 'W2D2 - EasyRun 30' + 3A' importato con successo, con 3 step
+2025-05-16 08:57:29,595 - root - INFO - Processando allenamento: W2D3 - Fartlek 25'
+2025-05-16 08:57:29,595 - root - INFO - Sport: Running, Date: 16/05/2025
+2025-05-16 08:57:29,595 - root - INFO - Parsing steps per 'W2D3 - Fartlek 25''
+2025-05-16 08:57:29,595 - root - INFO - Allenamento 'W2D3 - Fartlek 25'' importato con successo, con 4 step
+2025-05-16 08:57:29,595 - root - INFO - Processando allenamento: W2D4 - EasyRun 45'
+2025-05-16 08:57:29,595 - root - INFO - Sport: Running, Date: 17/05/2025
+2025-05-16 08:57:29,595 - root - INFO - Parsing steps per 'W2D4 - EasyRun 45''
+2025-05-16 08:57:29,595 - root - INFO - Allenamento 'W2D4 - EasyRun 45'' importato con successo, con 2 step
+2025-05-16 08:57:29,596 - root - INFO - Processando allenamento: W3D1 - Ripetute 55'
+2025-05-16 08:57:29,596 - root - INFO - Sport: Running, Date: 19/05/2025
+2025-05-16 08:57:29,596 - root - INFO - Parsing steps per 'W3D1 - Ripetute 55''
+2025-05-16 08:57:29,596 - root - INFO - Allenamento 'W3D1 - Ripetute 55'' importato con successo, con 4 step
+2025-05-16 08:57:29,596 - root - INFO - Processando allenamento: W3D2 - EasyRun 45' + 4A
+2025-05-16 08:57:29,596 - root - INFO - Sport: Running, Date: 21/05/2025
+2025-05-16 08:57:29,596 - root - INFO - Parsing steps per 'W3D2 - EasyRun 45' + 4A'
+2025-05-16 08:57:29,596 - root - INFO - Allenamento 'W3D2 - EasyRun 45' + 4A' importato con successo, con 3 step
+2025-05-16 08:57:29,596 - root - INFO - Processando allenamento: W3D3 - Progressivo 40'
+2025-05-16 08:57:29,597 - root - INFO - Sport: Running, Date: 23/05/2025
+2025-05-16 08:57:29,597 - root - INFO - Parsing steps per 'W3D3 - Progressivo 40''
+2025-05-16 08:57:29,597 - root - INFO - Allenamento 'W3D3 - Progressivo 40'' importato con successo, con 4 step
+2025-05-16 08:57:29,597 - root - INFO - Processando allenamento: W3D4 - Lungo 65'
+2025-05-16 08:57:29,597 - root - INFO - Sport: Running, Date: 24/05/2025
+2025-05-16 08:57:29,597 - root - INFO - Parsing steps per 'W3D4 - Lungo 65''
+2025-05-16 08:57:29,597 - root - INFO - Allenamento 'W3D4 - Lungo 65'' importato con successo, con 3 step
+2025-05-16 08:57:29,597 - root - INFO - Processando allenamento: W4D1 - Ripetute 60'
+2025-05-16 08:57:29,597 - root - INFO - Sport: Running, Date: 26/05/2025
+2025-05-16 08:57:29,597 - root - INFO - Parsing steps per 'W4D1 - Ripetute 60''
+2025-05-16 08:57:29,598 - root - INFO - Allenamento 'W4D1 - Ripetute 60'' importato con successo, con 4 step
+2025-05-16 08:57:29,598 - root - INFO - Processando allenamento: W4D2 - EasyRun 45' + 4A
+2025-05-16 08:57:29,598 - root - INFO - Sport: Running, Date: 28/05/2025
+2025-05-16 08:57:29,598 - root - INFO - Parsing steps per 'W4D2 - EasyRun 45' + 4A'
+2025-05-16 08:57:29,598 - root - INFO - Allenamento 'W4D2 - EasyRun 45' + 4A' importato con successo, con 3 step
+2025-05-16 08:57:29,598 - root - INFO - Processando allenamento: W4D3 - Ritmo gara 40'
+2025-05-16 08:57:29,598 - root - INFO - Sport: Running, Date: 30/05/2025
+2025-05-16 08:57:29,598 - root - INFO - Parsing steps per 'W4D3 - Ritmo gara 40''
+2025-05-16 08:57:29,598 - root - INFO - Allenamento 'W4D3 - Ritmo gara 40'' importato con successo, con 4 step
+2025-05-16 08:57:29,599 - root - INFO - Processando allenamento: W4D4 - Lungo 70'
+2025-05-16 08:57:29,599 - root - INFO - Sport: Running, Date: 31/05/2025
+2025-05-16 08:57:29,599 - root - INFO - Parsing steps per 'W4D4 - Lungo 70''
+2025-05-16 08:57:29,599 - root - INFO - Allenamento 'W4D4 - Lungo 70'' importato con successo, con 3 step
+2025-05-16 08:57:29,599 - root - INFO - Processando allenamento: W5D1 - Ripetute 30'
+2025-05-16 08:57:29,599 - root - INFO - Sport: Running, Date: 02/06/2025
+2025-05-16 08:57:29,599 - root - INFO - Parsing steps per 'W5D1 - Ripetute 30''
+2025-05-16 08:57:29,599 - root - INFO - Allenamento 'W5D1 - Ripetute 30'' importato con successo, con 4 step
+2025-05-16 08:57:29,599 - root - INFO - Processando allenamento: W5D2 - Pregara 25'
+2025-05-16 08:57:29,599 - root - INFO - Sport: Running, Date: 05/06/2025
+2025-05-16 08:57:29,600 - root - INFO - Parsing steps per 'W5D2 - Pregara 25''
+2025-05-16 08:57:29,600 - root - INFO - Allenamento 'W5D2 - Pregara 25'' importato con successo, con 4 step
+2025-05-16 08:57:29,600 - root - INFO - Processando allenamento: W5D3 - RUUUUUUN 5.30@5.00
+2025-05-16 08:57:29,600 - root - INFO - Sport: Running, Date: 06/05/2025
+2025-05-16 08:57:29,600 - root - INFO - Parsing steps per 'W5D3 - RUUUUUUN 5.30@5.00'
+2025-05-16 08:57:29,600 - root - INFO - Allenamento 'W5D3 - RUUUUUUN 5.30@5.00' importato con successo, con 2 step
+2025-05-16 08:57:29,600 - root - INFO - Importati 19 allenamenti
+2025-05-16 08:58:52,755 - root - INFO - Logged in as jonsey2383@gmail.com
+2025-05-16 09:04:02,247 - root - INFO - Configuration saved to config.yaml
+2025-05-16 09:04:02,386 - root - INFO - GarminPlannerGUI terminated.
