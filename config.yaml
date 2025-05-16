@@ -8,6 +8,10 @@ sports:
       Z3: '5:50'
       Z4: '5:30'
       Z5: '4:50'
+      recovery: 7:00-6:30
+      threshold: 5:10-4:50
+      marathon: 5:20-5:10
+      race_pace: 5:10-4:50
     margins:
       faster: 0:05
       slower: 0:05
@@ -21,6 +25,8 @@ sports:
       Z5: 300-375
       Z6: 375+
       recovery: <125
+      threshold: 235-265
+      sweet_spot: 220-235
     margins:
       power_up: 10
       power_down: 10
@@ -31,17 +37,20 @@ sports:
       Z3: 2:00-1:45
       Z4: 1:45-1:30
       Z5: 1:30-1:15
+      recovery: 2:45-2:30
+      threshold: 1:55-1:40
+      sprint: 1:25-1:15
     margins:
       faster: 0:02
       slower: 0:02
 heart_rates:
   max_hr: 180
+  rest_hr: 60
   Z1_HR: 62-76% max_hr
   Z2_HR: 76-85% max_hr
   Z3_HR: 85-91% max_hr
   Z4_HR: 91-95% max_hr
   Z5_HR: 95-100% max_hr
-  rest_hr: 60
 hr_margins:
   hr_up: 5
   hr_down: 5

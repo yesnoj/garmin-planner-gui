@@ -672,7 +672,7 @@ class WorkoutStepDialog(tk.Toplevel):
             
             elif end_condition == "distance":
                 # Verifica che sia nel formato Nm o Nkm
-                if not re.match(r'^\d+(\.\d+)?[mk]m$', end_value):
+                if not re.match(r'^\d+(\.\d+)?(m|km)$', end_value):
                     show_error("Errore", "La distanza deve essere nel formato Nm o Nkm (es. 1000m o 5km)", parent=self)
                     return False
             
