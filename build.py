@@ -15,6 +15,7 @@ if not os.path.exists(icon_file):
     icon_param = []
 else:
     print(f"Icona trovata: {icon_file}")
+    # Modifica qui: usa --icon= invece di -i per maggiore compatibilità
     icon_param = [f'--icon={icon_file}']
 
 # Definisci i parametri per PyInstaller
@@ -23,6 +24,7 @@ params = [
     '--name=GarminPlannerGUI',      # Nome dell'eseguibile
     '--onefile',                    # Crea un singolo file eseguibile
     '--windowed',                   # Non mostrare la console quando l'app è in esecuzione
+    # Corretto il separatore per il percorso (usa ; per Windows)
     f'--add-data={config_file};.',  # Includi il file di configurazione
     '--hidden-import=pandas',       # Importazioni nascoste
     '--hidden-import=openpyxl',
