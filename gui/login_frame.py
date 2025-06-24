@@ -2,18 +2,19 @@
 # -*- coding: utf-8 -*-
 
 """
-Frame per il login a Garmin Connect con supporto MFA.
+Frame per il login a Garmin Connect con supporto MFA e selezione cartella autenticazione.
 """
 
 import os
 import logging
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import threading
 from typing import Optional, Dict, Any
 
-from auth import GarminAuth, GarminClient
+from auth import GarminAuth, GarminClient, get_auth, reset_auth
 from gui.utils import create_tooltip, show_error
+from config import get_config
 
 
 class LoginFrame(ttk.Frame):
@@ -30,6 +31,7 @@ class LoginFrame(ttk.Frame):
         super().__init__(parent)
         self.parent = parent
         self.auth = auth
+        self.config = get_config()
         
         # Stato del login
         self.is_logging_in = False
@@ -91,6 +93,29 @@ class LoginFrame(ttk.Frame):
         
         # Configura il form per espandersi
         form_grid.columnconfigure(1, weight=1)
+        
+        # Frame per la cartella di autenticazione
+        auth_folder_frame = ttk.LabelFrame(main_frame, text="Cartella dati autenticazione")
+        auth_folder_frame.pack(fill=tk.X, padx=50, pady=(0, 20))
+        
+        auth_folder_content = ttk.Frame(auth_folder_frame)
+        auth_folder_content.pack(fill=tk.X, padx=20, pady=15)
+        
+        # Mostra il percorso corrente
+        current_path = self.config.get('oauth_folder', '~/.garth')
+        self.auth_folder_var = tk.StringVar(value=os.path.expanduser(current_path))
+        
+        ttk.Label(auth_folder_content, text="Percorso:").pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.auth_folder_entry = ttk.Entry(auth_folder_content, textvariable=self.auth_folder_var, width=50)
+        self.auth_folder_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        
+        self.browse_button = ttk.Button(auth_folder_content, text="Sfoglia...", command=self.browse_folder)
+        self.browse_button.pack(side=tk.LEFT)
+        
+        create_tooltip(self.auth_folder_entry, 
+                     "Cartella dove verranno salvati i token di autenticazione.\n"
+                     "Cambiare questa cartella richiederà un nuovo login.")
         
         # Frame per MFA (inizialmente nascosto)
         self.mfa_frame = ttk.LabelFrame(main_frame, text="Autenticazione a due fattori")
@@ -165,6 +190,48 @@ class LoginFrame(ttk.Frame):
         info_label = ttk.Label(info_frame, text=info_text, wraplength=600, justify=tk.LEFT)
         info_label.pack(padx=20, pady=20)
     
+    def browse_folder(self):
+        """Apre il dialogo per selezionare la cartella di autenticazione."""
+        current_path = os.path.expanduser(self.auth_folder_var.get())
+        
+        # Se il percorso corrente esiste, usa quello come iniziale
+        if not os.path.exists(current_path):
+            current_path = os.path.expanduser("~")
+        
+        folder_selected = filedialog.askdirectory(
+            title="Seleziona cartella per i dati di autenticazione",
+            initialdir=current_path,
+            parent=self
+        )
+        
+        if folder_selected:
+            # Crea una sottocartella garmin_auth nella cartella selezionata
+            auth_folder = os.path.join(folder_selected, "garmin_auth")
+            self.auth_folder_var.set(auth_folder)
+            
+            # Salva la nuova configurazione
+            self.config.set('oauth_folder', auth_folder)
+            self.config.save()
+            
+            # Aggiorna l'istanza di autenticazione
+            self.update_auth_folder()
+            
+            messagebox.showinfo("Cartella aggiornata", 
+                              f"La cartella di autenticazione è stata impostata su:\n{auth_folder}\n\n"
+                              "Nota: se avevi già effettuato il login, dovrai farlo nuovamente.",
+                              parent=self)
+    
+    def update_auth_folder(self):
+        """Aggiorna la cartella di autenticazione nell'oggetto auth."""
+        new_folder = self.auth_folder_var.get()
+        if new_folder != self.auth.oauth_folder:
+            # Resetta l'autenticazione e crea una nuova istanza con la nuova cartella
+            reset_auth()
+            self.auth = get_auth(oauth_folder=new_folder)
+            # Aggiorna il riferimento nell'app principale se necessario
+            if hasattr(self.parent.master, 'auth'):
+                self.parent.master.auth = self.auth
+    
     def check_saved_credentials(self):
         """Verifica se esistono credenziali salvate."""
         try:
@@ -203,8 +270,11 @@ class LoginFrame(ttk.Frame):
         """Mostra l'interfaccia per l'inserimento del codice MFA."""
         self.mfa_mode = True
         
-        # Nascondi il frame di login normale
+        # Nascondi il frame di login normale e cartella auth
         self.login_frame.pack_forget()
+        for widget in self.master.winfo_children():
+            if isinstance(widget, ttk.LabelFrame) and widget.cget("text") == "Cartella dati autenticazione":
+                widget.pack_forget()
         
         # Mostra il frame MFA
         self.mfa_frame.pack(fill=tk.X, padx=50, pady=20)
@@ -245,6 +315,9 @@ class LoginFrame(ttk.Frame):
         if not email or not password:
             show_error("Errore", "Inserisci email e password", parent=self)
             return
+        
+        # Aggiorna la cartella di autenticazione se necessario
+        self.update_auth_folder()
         
         # Aggiorna lo stato
         self.is_logging_in = True
@@ -316,6 +389,9 @@ class LoginFrame(ttk.Frame):
         if self.is_logging_in:
             return
         
+        # Aggiorna la cartella di autenticazione se necessario
+        self.update_auth_folder()
+        
         # Aggiorna lo stato
         self.is_logging_in = True
         self.status_var.set("Ripresa sessione in corso...")
@@ -333,44 +409,44 @@ class LoginFrame(ttk.Frame):
         self.auth.resume(self.on_login_complete)
     
     def on_login_complete(self, success: bool, client: Optional[GarminClient]):
-            """
-            Callback chiamato al termine del login.
+        """
+        Callback chiamato al termine del login.
+        
+        Args:
+            success: True se il login è riuscito, False altrimenti
+            client: Client Garmin o None
+        """
+        # Aggiorna lo stato
+        self.is_logging_in = False
+        
+        # Ferma l'indicatore di progresso
+        self.progress.stop()
+        self.progress.pack_forget()
+        
+        # Riabilita i pulsanti
+        self.login_button.configure(state="normal")
+        self.resume_button.configure(state="normal")
+        
+        # Controlla se è richiesto MFA
+        logging.info(f"Login complete - Success: {success}, MFA Required: {self.auth.mfa_required}")
+        
+        # Gestisci il risultato
+        if not success and self.auth.mfa_required:
+            logging.info("Showing MFA interface")
+            # Mostra l'interfaccia MFA
+            self.show_mfa_mode()
+        elif success:
+            self.status_var.set("Login effettuato con successo")
             
-            Args:
-                success: True se il login è riuscito, False altrimenti
-                client: Client Garmin o None
-            """
-            # Aggiorna lo stato
-            self.is_logging_in = False
+            # Passa alla scheda successiva
+            if isinstance(self.parent, ttk.Notebook):
+                current_index = self.parent.index(self.parent.select())
+                if current_index < len(self.parent.tabs()) - 1:
+                    self.parent.select(current_index + 1)
             
-            # Ferma l'indicatore di progresso
-            self.progress.stop()
-            self.progress.pack_forget()
-            
-            # Riabilita i pulsanti
-            self.login_button.configure(state="normal")
-            self.resume_button.configure(state="normal")
-            
-            # Controlla se è richiesto MFA
-            logging.info(f"Login complete - Success: {success}, MFA Required: {self.auth.mfa_required}")
-            
-            # Gestisci il risultato
-            if not success and self.auth.mfa_required:
-                logging.info("Showing MFA interface")
-                # Mostra l'interfaccia MFA
-                self.show_mfa_mode()
-            elif success:
-                self.status_var.set("Login effettuato con successo")
-                
-                # Passa alla scheda successiva
-                if isinstance(self.parent, ttk.Notebook):
-                    current_index = self.parent.index(self.parent.select())
-                    if current_index < len(self.parent.tabs()) - 1:
-                        self.parent.select(current_index + 1)
-                
-            else:
-                self.status_var.set("Login fallito")
-                messagebox.showerror("Errore", "Login fallito. Verifica le credenziali e riprova.", parent=self)
+        else:
+            self.status_var.set("Login fallito")
+            messagebox.showerror("Errore", "Login fallito. Verifica le credenziali e riprova.", parent=self)
     
     def on_mfa_complete(self, success: bool, client: Optional[GarminClient]):
         """

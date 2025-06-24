@@ -40,8 +40,9 @@ class GarminPlannerApp:
         # Carica la configurazione
         self.config = get_config(config_path)
         
-        # Ottieni il gestore dell'autenticazione
-        self.auth = get_auth(oauth_folder=self.config.get('oauth_folder', '~/.garth'))
+        # Ottieni il gestore dell'autenticazione con il percorso personalizzato
+        oauth_folder = self.config.get('oauth_folder', '~/.garth')
+        self.auth = get_auth(oauth_folder=oauth_folder)
         
         # Imposta gli stili
         setup_styles(self.root, theme=self.config.get('ui.theme', 'light'))

@@ -6,6 +6,7 @@ Gestione dell'autenticazione a Garmin Connect per l'applicazione GarminPlannerGU
 """
 
 import os
+import sys
 import logging
 import time
 import threading
@@ -26,123 +27,189 @@ class GarminAuth:
         Args:
             oauth_folder: Cartella per salvare i token OAuth
         """
+        # Espandi il percorso e gestisci percorsi Windows
         self.oauth_folder = os.path.expanduser(oauth_folder)
+        
+        # Se siamo su Windows e il percorso contiene ancora ~, usa una cartella alternativa
+        if sys.platform == 'win32' and '~' in self.oauth_folder:
+            # Usa la cartella documenti dell'utente
+            documents = os.path.expanduser('~/Documents')
+            self.oauth_folder = os.path.join(documents, 'garmin_planner', 'auth')
+        
+        # Log del percorso che stiamo usando
+        logging.info(f"OAuth folder path: {self.oauth_folder}")
+        
+        # Crea la cartella se non esiste con gestione errori migliorata
+        try:
+            os.makedirs(self.oauth_folder, exist_ok=True)
+            logging.info(f"OAuth folder created/verified: {self.oauth_folder}")
+            
+            # Verifica che possiamo scrivere nella cartella
+            test_file = os.path.join(self.oauth_folder, '.test_write')
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            logging.info("Write permissions verified for OAuth folder")
+            
+        except PermissionError:
+            logging.error(f"Permission denied creating OAuth folder: {self.oauth_folder}")
+            # Prova una cartella alternativa nella directory dell'applicazione
+            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.oauth_folder = os.path.join(app_dir, 'auth_data')
+            logging.info(f"Using alternative OAuth folder: {self.oauth_folder}")
+            
+            try:
+                os.makedirs(self.oauth_folder, exist_ok=True)
+            except Exception as e2:
+                logging.error(f"Failed to create alternative OAuth folder: {e2}")
+                raise Exception(f"Cannot create OAuth folder. Please check permissions or specify a different path in config.yaml")
+                
+        except Exception as e:
+            logging.error(f"Error creating OAuth folder: {e}")
+            raise
+        
         self.client = None
         self.is_authenticated = False
         self.auth_lock = threading.Lock()
         self.auth_callbacks = []
         self.mfa_required = False
         self.temp_credentials = None  # Memorizza temporaneamente le credenziali per MFA
-        
-        # Crea la cartella se non esiste
-        os.makedirs(self.oauth_folder, exist_ok=True)
     
     def login(self, username: str, password: str, callback: Optional[Callable] = None) -> bool:
-            """
-            Effettua il login a Garmin Connect.
-            
-            Args:
-                username: Nome utente (email)
-                password: Password
-                callback: Funzione da chiamare al termine del login
-            
-            Returns:
-                True se il login è riuscito, False altrimenti
-            """
-            def _login_thread():
-                with self.auth_lock:
+        """
+        Effettua il login a Garmin Connect.
+        
+        Args:
+            username: Nome utente (email)
+            password: Password
+            callback: Funzione da chiamare al termine del login
+        
+        Returns:
+            True se il login è riuscito, False altrimenti
+        """
+        def _login_thread():
+            with self.auth_lock:
+                try:
+                    # Resetta l'autenticazione
+                    self.is_authenticated = False
+                    self.client = None
+                    self.mfa_required = False
+                    
+                    # Salva temporaneamente le credenziali
+                    self.temp_credentials = (username, password)
+                    
+                    # Prepara per intercettare richieste MFA
+                    import builtins
+                    import sys
+                    from io import StringIO
+                    
+                    # Salva l'input originale
+                    original_input = builtins.input
+                    mfa_detected = False
+                    
+                    # Crea una funzione che rileva quando viene richiesto MFA
+                    def detect_mfa_input(prompt=""):
+                        nonlocal mfa_detected
+                        logging.info(f"Input richiesto da garth: {prompt}")
+                        if "mfa" in prompt.lower() or "code" in prompt.lower():
+                            mfa_detected = True
+                            # Solleva un'eccezione speciale per segnalare che è richiesto MFA
+                            raise Exception("MFA_REQUIRED")
+                        return ""
+                    
                     try:
-                        # Resetta l'autenticazione
-                        self.is_authenticated = False
-                        self.client = None
-                        self.mfa_required = False
+                        # Sostituisci l'input per rilevare richieste MFA
+                        builtins.input = detect_mfa_input
                         
-                        # Salva temporaneamente le credenziali
-                        self.temp_credentials = (username, password)
+                        # Tenta il login
+                        garth.login(username, password)
                         
-                        # Prepara per intercettare richieste MFA
-                        import builtins
-                        import sys
-                        from io import StringIO
+                        # Se arriviamo qui, il login è riuscito senza MFA
+                        self._save_session()
                         
-                        # Salva l'input originale
-                        original_input = builtins.input
-                        mfa_detected = False
+                        self.client = GarminClient()
+                        self.is_authenticated = True
                         
-                        # Crea una funzione che rileva quando viene richiesto MFA
-                        def detect_mfa_input(prompt=""):
-                            nonlocal mfa_detected
-                            logging.info(f"Input richiesto da garth: {prompt}")
-                            if "mfa" in prompt.lower() or "code" in prompt.lower():
-                                mfa_detected = True
-                                # Solleva un'eccezione speciale per segnalare che è richiesto MFA
-                                raise Exception("MFA_REQUIRED")
-                            return ""
-                        
-                        try:
-                            # Sostituisci l'input per rilevare richieste MFA
-                            builtins.input = detect_mfa_input
-                            
-                            # Tenta il login
-                            garth.login(username, password)
-                            garth.save(self.oauth_folder)
-                            
-                            # Se arriviamo qui, il login è riuscito senza MFA
-                            self.client = GarminClient()
-                            self.is_authenticated = True
-                            
-                            logging.info(f"Logged in as {username}")
-                            
-                            # Notifica i callback
-                            self._notify_auth_callbacks(True, self.client)
-                            
-                            # Chiama il callback specifico se fornito
-                            if callback:
-                                callback(True, self.client)
-                                
-                        except Exception as e:
-                            error_msg = str(e)
-                            logging.error(f"Login error: {error_msg}")
-                            
-                            if "MFA_REQUIRED" in error_msg or mfa_detected:
-                                # MFA è richiesto
-                                self.mfa_required = True
-                                logging.info("MFA required for login - showing MFA interface")
-                                
-                                # Chiama il callback indicando che il login è fallito ma MFA è richiesto
-                                if callback:
-                                    callback(False, None)
-                            else:
-                                # Altro errore di login
-                                self.is_authenticated = False
-                                self.mfa_required = False
-                                
-                                # Notifica i callback
-                                self._notify_auth_callbacks(False, None)
-                                
-                                # Chiama il callback specifico se fornito
-                                if callback:
-                                    callback(False, None)
-                        
-                        finally:
-                            # Ripristina l'input originale
-                            builtins.input = original_input
-                            
-                    except Exception as e:
-                        # Errore esterno al try interno
-                        logging.error(f"Login failed: {str(e)}")
-                        self.is_authenticated = False
+                        logging.info(f"Logged in as {username}")
                         
                         # Notifica i callback
-                        self._notify_auth_callbacks(False, None)
+                        self._notify_auth_callbacks(True, self.client)
                         
                         # Chiama il callback specifico se fornito
                         if callback:
-                            callback(False, None)
+                            callback(True, self.client)
+                            
+                    except Exception as e:
+                        error_msg = str(e)
+                        logging.error(f"Login error: {error_msg}")
+                        
+                        if "MFA_REQUIRED" in error_msg or mfa_detected:
+                            # MFA è richiesto
+                            self.mfa_required = True
+                            logging.info("MFA required for login - showing MFA interface")
+                            
+                            # Chiama il callback indicando che il login è fallito ma MFA è richiesto
+                            if callback:
+                                callback(False, None)
+                        else:
+                            # Altro errore di login
+                            self.is_authenticated = False
+                            self.mfa_required = False
+                            
+                            # Notifica i callback
+                            self._notify_auth_callbacks(False, None)
+                            
+                            # Chiama il callback specifico se fornito
+                            if callback:
+                                callback(False, None)
+                    
+                    finally:
+                        # Ripristina l'input originale
+                        builtins.input = original_input
+                        
+                except Exception as e:
+                    # Errore esterno al try interno
+                    logging.error(f"Login failed: {str(e)}")
+                    self.is_authenticated = False
+                    
+                    # Notifica i callback
+                    self._notify_auth_callbacks(False, None)
+                    
+                    # Chiama il callback specifico se fornito
+                    if callback:
+                        callback(False, None)
+        
+        # Avvia il login in un thread separato
+        threading.Thread(target=_login_thread).start()
+        return True
+    
+    def _save_session(self):
+        """Salva la sessione con gestione errori migliorata."""
+        try:
+            # Assicurati che la directory esista
+            os.makedirs(self.oauth_folder, exist_ok=True)
             
-            # Avvia il login in un thread separato
-            threading.Thread(target=_login_thread).start()
-            return True
+            # Salva la sessione
+            garth.save(self.oauth_folder)
+            
+            # Verifica che il file sia stato creato
+            session_file = os.path.join(self.oauth_folder, 'oauth2_token.json')
+            if os.path.exists(session_file):
+                logging.info(f"Session saved successfully to: {session_file}")
+                # Crea anche un link/copia come session.json per compatibilità
+                session_json = os.path.join(self.oauth_folder, 'session.json')
+                import shutil
+                try:
+                    shutil.copy2(session_file, session_json)
+                    logging.info(f"Session copied to: {session_json}")
+                except:
+                    pass
+            else:
+                logging.warning("Session file not found after save attempt")
+                
+        except Exception as e:
+            logging.error(f"Error saving session: {e}")
+            raise
     
     def submit_mfa_code(self, mfa_code: str, callback: Optional[Callable] = None) -> bool:
         """
@@ -188,7 +255,9 @@ class GarminAuth:
                         
                         # Effettua il login (garth chiederà il codice MFA tramite input())
                         garth.login(username, password)
-                        garth.save(self.oauth_folder)
+                        
+                        # IMPORTANTE: Salva la sessione dopo il login con MFA
+                        self._save_session()
                         
                         # Inizializza il client e aggiorna lo stato
                         self.client = GarminClient()
@@ -243,6 +312,14 @@ class GarminAuth:
                     self.client = None
                     self.mfa_required = False
                     
+                    # Log dei file nella cartella oauth
+                    logging.info(f"Checking OAuth folder: {self.oauth_folder}")
+                    if os.path.exists(self.oauth_folder):
+                        files = os.listdir(self.oauth_folder)
+                        logging.info(f"Files in OAuth folder: {files}")
+                    else:
+                        logging.warning(f"OAuth folder does not exist: {self.oauth_folder}")
+                    
                     # Prova a riprendere la sessione
                     garth.resume(self.oauth_folder)
                     
@@ -275,10 +352,20 @@ class GarminAuth:
                     if callback:
                         callback(False, None)
         
-        # Verifica se esiste il file di sessione
-        session_file = os.path.join(self.oauth_folder, 'session.json')
-        if not os.path.exists(session_file):
-            logging.warning(f"Session file {session_file} not found")
+        # Verifica se esistono file di sessione (garth potrebbe usare nomi diversi)
+        session_files = ['session.json', 'oauth2_token.json', '.garth_cache']
+        session_found = False
+        
+        for filename in session_files:
+            session_file = os.path.join(self.oauth_folder, filename)
+            if os.path.exists(session_file):
+                logging.info(f"Found session file: {session_file}")
+                session_found = True
+                break
+        
+        if not session_found:
+            logging.warning(f"No session files found in {self.oauth_folder}")
+            logging.warning(f"Checked for: {session_files}")
             if callback:
                 callback(False, None)
             return False
@@ -296,10 +383,14 @@ class GarminAuth:
         """
         with self.auth_lock:
             try:
-                # Rimuovi i file di sessione
-                session_file = os.path.join(self.oauth_folder, 'session.json')
-                if os.path.exists(session_file):
-                    os.remove(session_file)
+                # Rimuovi tutti i possibili file di sessione
+                session_files = ['session.json', 'oauth2_token.json', '.garth_cache']
+                
+                for filename in session_files:
+                    session_file = os.path.join(self.oauth_folder, filename)
+                    if os.path.exists(session_file):
+                        os.remove(session_file)
+                        logging.info(f"Removed session file: {session_file}")
                 
                 # Resetta lo stato
                 self.is_authenticated = False
