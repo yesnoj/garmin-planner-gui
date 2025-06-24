@@ -37,62 +37,68 @@ class ExcelService:
         if not PANDAS_AVAILABLE:
             raise ImportError("pandas e openpyxl sono richiesti per gestire i file Excel")
     
+
     @staticmethod
     def import_workouts(file_path: str) -> List[Tuple[str, Workout]]:
         """
         Importa allenamenti da un file Excel con multipli fogli.
         
         Args:
-            file_path: Percorso del file
+            file_path: Percorso del file Excel
             
         Returns:
             Lista di tuple (nome, allenamento)
             
         Raises:
             ImportError: Se pandas non è disponibile
-            IOError: Se il file non può essere letto
-            ValueError: Se il file non contiene allenamenti validi
+            ValueError: Se il file non può essere letto
         """
-        # Verifica che pandas sia disponibile
         ExcelService.check_pandas()
         
         try:
-            # Carica il file
+            # Leggi il file Excel
             xls = pd.ExcelFile(file_path)
             
-            # Ottieni istanza di configurazione
+            # Ottieni la configurazione corrente
             config = get_config()
             
-            # Carica la configurazione se presente
+            # Processa i fogli di configurazione se presenti
             if 'Config' in xls.sheet_names:
                 config_df = pd.read_excel(file_path, sheet_name='Config')
                 
+                logging.info(f"Foglio 'Config' trovato. Colonne: {config_df.columns.tolist()}")
+                
                 # Verifica che le colonne necessarie siano presenti
-                if 'Parametro' in config_df.columns and 'Valore' in config_df.columns:
-                    # Importa i valori di configurazione
+                if 'Parameter' in config_df.columns and 'Value' in config_df.columns:
                     for _, row in config_df.iterrows():
-                        param = row.get('Parametro')
-                        value = row.get('Valore')
+                        param = row.get('Parameter')
+                        value = row.get('Value')
                         
-                        if param and pd.notna(value):
+                        if pd.notna(param) and pd.notna(value):
+                            str_value = str(value).strip()
+                            
+                            # Imposta i parametri nella configurazione
                             if param == 'athlete_name':
-                                config.set('athlete_name', value)
+                                config.set('athlete_name', str_value)
                             elif param == 'name_prefix':
-                                config.set('planning.name_prefix', value)
+                                config.set('planning.name_prefix', str_value)
                             elif param == 'race_day':
-                                config.set('planning.race_day', value)
+                                config.set('planning.race_day', str_value)
                             elif param == 'preferred_days':
-                                # Converti in lista se è una stringa
-                                if isinstance(value, str):
-                                    try:
-                                        import ast
-                                        days_list = ast.literal_eval(value)
-                                        config.set('planning.preferred_days', days_list)
-                                    except:
-                                        pass
-                                elif isinstance(value, (list, tuple)):
-                                    config.set('planning.preferred_days', list(value))
-                            elif param.startswith('margin.'):
+                                # Converti la stringa in lista di interi
+                                try:
+                                    # Gestisci vari formati
+                                    if '[' in str_value:
+                                        # Formato: [1, 3, 5] o [1,3,5]
+                                        days_str = str_value.strip('[]')
+                                        days = [int(d.strip()) for d in days_str.split(',') if d.strip()]
+                                    else:
+                                        # Formato: 1,3,5 o 1 3 5
+                                        days = [int(d.strip()) for d in re.split('[,\\s]+', str_value) if d.strip()]
+                                    config.set('planning.preferred_days', days)
+                                except Exception as e:
+                                    logging.warning(f"Impossibile parsare preferred_days '{str_value}': {e}")
+                            elif param.startswith('margins.'):
                                 # Gestione margini
                                 margin_type = param.split('.')[1]
                                 if margin_type == 'faster':
@@ -146,40 +152,35 @@ class ExcelService:
                         for section_name, section_type in [(run_section, "running"), 
                                                           (cycle_section, "cycling"), 
                                                           (swim_section, "swimming")]:
-                            if section_name in str(name):
+                            if section_name in str(name) or str(name) == section_name:
                                 current_section = section_type
-                                logging.info(f"Sezione trovata: {current_section}")
+                                logging.info(f"Cambiato a sezione: {current_section}")
                                 break
-                        continue
                     
-                    # Ignora righe senza nome o valore
-                    if pd.isna(name) or pd.isna(value):
-                        continue
-                    
-                    # Raccogli i valori in base alla sezione
-                    if current_section == "running":
-                        # Assicurati che il valore sia una stringa
-                        str_value = str(value)
-                        running_paces[name] = str_value
-                        logging.info(f"Raccolto running pace: {name} = {str_value}")
-                    elif current_section == "cycling":
-                        str_value = str(value)
-                        cycling_powers[name] = str_value
-                        logging.info(f"Raccolto cycling power: {name} = {str_value}")
-                    elif current_section == "swimming":
-                        str_value = str(value)
-                        swimming_paces[name] = str_value
-                        logging.info(f"Raccolto swimming pace: {name} = {str_value}")
+                    # Processa i valori
+                    elif pd.notna(name) and pd.notna(value) and current_section:
+                        name_str = str(name).strip()
+                        value_str = str(value).strip()
+                        
+                        logging.info(f"Processando {current_section}: {name_str} = {value_str}")
+                        
+                        # Aggiunge al dizionario appropriato
+                        if current_section == "running":
+                            running_paces[name_str] = value_str
+                        elif current_section == "cycling":
+                            cycling_powers[name_str] = value_str
+                        elif current_section == "swimming":
+                            swimming_paces[name_str] = value_str
                 
-                # Usa replace_section per sostituire completamente le sezioni
+                # Sostituisci completamente le sezioni con i nuovi valori
                 if running_paces:
                     config.replace_section('sports.running.paces', running_paces)
                     logging.info(f"Sostituita sezione running paces con {len(running_paces)} valori")
-                
+                    
                 if cycling_powers:
                     config.replace_section('sports.cycling.power_values', cycling_powers)
-                    logging.info(f"Sostituita sezione cycling powers con {len(cycling_powers)} valori")
-                
+                    logging.info(f"Sostituita sezione cycling power con {len(cycling_powers)} valori")
+                    
                 if swimming_paces:
                     config.replace_section('sports.swimming.paces', swimming_paces)
                     logging.info(f"Sostituita sezione swimming paces con {len(swimming_paces)} valori")
@@ -223,79 +224,81 @@ class ExcelService:
             if 'Workouts' in xls.sheet_names:
                 workouts_df = pd.read_excel(file_path, sheet_name='Workouts')
                 
-                logging.info(f"Foglio 'Workouts' trovato. Colonne: {workouts_df.columns.tolist()}")
-                logging.info(f"Numero di righe nel foglio: {len(workouts_df)}")
+                logging.info(f"Foglio 'Workouts' trovato. Righe: {len(workouts_df)}")
                 
-                # Verifica che ci siano le colonne necessarie
-                required_columns = ['Week', 'Session', 'Date', 'Sport', 'Description', 'Steps']
-                missing_columns = [col for col in required_columns if col not in workouts_df.columns]
-                
-                if missing_columns:
-                    logging.warning(f"Foglio 'Workouts' non valido: mancano le colonne {', '.join(missing_columns)}")
-                    return []
-                
-                # Trova le righe con i nomi degli allenamenti - guardiamo sia Week che Sport
-                # Questo è più permissivo: consideriamo una riga valida se ha un valore in "Week" OPPURE in "Sport"
-                workout_rows = workouts_df[(workouts_df['Week'].notna()) | (workouts_df['Sport'].notna())].index.tolist()
-                
-                if not workout_rows:
-                    logging.warning(f"Foglio 'Workouts' non contiene allenamenti validi")
-                    # Analizziamo il contenuto per diagnostica
-                    if not workouts_df.empty:
-                        logging.info(f"Primi 5 record nel foglio Workouts:\n{workouts_df.head().to_string()}")
-                    return []
-                
-                logging.info(f"Trovate {len(workout_rows)} righe di allenamenti")
-                
-                # Per ogni allenamento nel foglio
-                for i, row_idx in enumerate(workout_rows):
+                # Processa riga per riga
+                for row_idx, row in workouts_df.iterrows():
                     try:
-                        # Ottieni i dati dell'allenamento
-                        week = workouts_df.loc[row_idx, 'Week']
-                        session = workouts_df.loc[row_idx, 'Session']  # Spostato prima di Date
-                        date = workouts_df.loc[row_idx, 'Date']        # Ora dopo Session
-                        sport_type = workouts_df.loc[row_idx, 'Sport']
-                        description = workouts_df.loc[row_idx, 'Description'] if pd.notna(workouts_df.loc[row_idx, 'Description']) else ''
-                        steps_text = workouts_df.loc[row_idx, 'Steps'] if pd.notna(workouts_df.loc[row_idx, 'Steps']) else ''
-
-                        # Converti la data da DD/MM/YYYY a YYYY-MM-DD se necessario
+                        # Estrai informazioni di base
+                        week = row.get('Week')
+                        session = row.get('Session', '')
+                        sport_type = str(row.get('Sport', 'running')).lower()
+                        description = row.get('Description', '')
+                        steps_text = row.get('Steps', '')
+                        
+                        # Data nel formato DD/MM/YYYY
+                        date_text = row.get('Date', '')
                         workout_date = None
-                        if pd.notna(date):
-                            # Verifica se la data contiene slash (formato DD/MM/YYYY)
-                            date_str = str(date)
-                            if '/' in date_str and len(date_str.split('/')) == 3:
+                        
+                        if pd.notna(date_text) and date_text:
+                            try:
+                                # Se è già una stringa, usala direttamente
+                                if isinstance(date_text, str):
+                                    date_parts = date_text.split('/')
+                                    if len(date_parts) == 3:
+                                        day, month, year = date_parts
+                                        workout_date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                                # Se è un datetime di pandas
+                                else:
+                                    workout_date = date_text.strftime('%Y-%m-%d')
+                            except Exception as e:
+                                logging.warning(f"Impossibile parsare la data '{date_text}': {e}")
+                        
+                        # Nome dell'allenamento - GESTIONE CORRETTA DEI TIPI
+                        if pd.notna(session) and session != '':
+                            # Converti session in stringa per sicurezza
+                            session_str = str(session)
+                            
+                            # Se session contiene già il formato completo (es. "W9D5"), usalo
+                            if session_str.startswith('W') and 'D' in session_str:
+                                workout_name = f"{session_str} - {description}"
+                            # Altrimenti, se abbiamo week, ricostruisci il nome
+                            elif pd.notna(week):
                                 try:
-                                    day, month, year = date_str.split('/')
-                                    workout_date = f"{year}-{month}-{day}"  # Converte in YYYY-MM-DD
-                                except:
-                                    workout_date = date_str  # Mantiene originale in caso di errore
-                            elif isinstance(date, pd.Timestamp):
-                                workout_date = date.strftime('%Y-%m-%d')  # Formato ISO standard
+                                    # Gestisci week che può essere numero o stringa
+                                    if isinstance(week, str) and week.startswith('W'):
+                                        week_num = int(week[1:])
+                                    else:
+                                        week_num = int(week)
+                                    
+                                    # Gestisci session che può essere numero o stringa
+                                    if isinstance(session, (int, float)):
+                                        # Session è già un numero
+                                        session_num = int(session)
+                                        workout_name = f"W{week_num}D{session_num} - {description}"
+                                    elif session_str.isdigit():
+                                        # Session è una stringa numerica
+                                        session_num = int(session_str)
+                                        workout_name = f"W{week_num}D{session_num} - {description}"
+                                    elif session_str.startswith('D'):
+                                        # Session è nel formato "D5"
+                                        workout_name = f"W{week_num}{session_str} - {description}"
+                                    else:
+                                        # Altri formati
+                                        workout_name = f"{session_str} - {description}"
+                                except Exception as e:
+                                    logging.warning(f"Errore nel parsing week/session: {e}")
+                                    workout_name = f"{session_str} - {description}"
                             else:
-                                workout_date = date_str  # Mantiene così com'è se non nel formato previsto
-                        
-                        logging.info(f"Processando allenamento: W{week}D{session} - {description}")
-                        logging.info(f"Sport: {sport_type}, Date: {date}")
-                        logging.debug(f"Steps: {steps_text}")
-                        
-                        # Verifica e converti il tipo di sport
-                        if pd.isna(sport_type):
-                            sport_type = 'running'  # Default
+                                workout_name = f"{session_str} - {description}"
                         else:
-                            sport_type = str(sport_type).lower()
-                            if 'running' in sport_type:
-                                sport_type = 'running'
-                            elif 'cycling' in sport_type:
-                                sport_type = 'cycling'
-                            elif 'swimming' in sport_type:
-                                sport_type = 'swimming'
-                            else:
-                                sport_type = 'running'  # Default
+                            workout_name = description
                         
-                        # Costruisci il nome dell'allenamento
-                        workout_name = f"W{week}D{session} - {description}"
+                        # Log per debug
+                        logging.debug(f"Week: {week} (type: {type(week)}), Session: {session} (type: {type(session)})")
+                        logging.debug(f"Nome allenamento costruito: {workout_name}")
+
                         
-                    
                         # Creare l'allenamento
                         workout = Workout(sport_type, workout_name, description)
                         
@@ -328,35 +331,38 @@ class ExcelService:
                                 # Normalizza la linea
                                 line = line.strip()
                                 
+
                                 # Controlla se è una ripetizione
                                 if line.startswith('repeat'):
                                     try:
                                         # Rimuovi i due punti alla fine se presenti
                                         line_clean = line.replace(':', '')
                                         
+                                        # Estrai il numero di ripetizioni
+                                        iterations = 1  # default
                                         # Usa una regex per estrarre il numero
                                         import re
                                         numbers = re.findall(r'\d+', line_clean)
                                         if numbers:
                                             iterations = int(numbers[0])
                                         else:
-                                            iterations = 1
                                             logging.warning(f"Nessun numero trovato in '{line}', usando 1 ripetizione")
+                                        
+                                        logging.debug(f"Creato repeat step con {iterations} ripetizioni")
+                                        current_repeat = WorkoutStep(
+                                            order=0,
+                                            step_type='repeat',
+                                            end_condition='iterations',
+                                            end_condition_value=iterations
+                                        )
+                                        
+                                        # Aggiungi all'allenamento
+                                        workout.add_step(current_repeat)
+                                        indent_level = line_indent
+                                        
                                     except Exception as e:
-                                        iterations = 1
-                                        logging.warning(f"Impossibile estrarre il numero di ripetizioni da '{line}': {str(e)}, usando 1")
-                                    
-                                    logging.debug(f"Creato repeat step con {iterations} ripetizioni")
-                                    current_repeat = WorkoutStep(
-                                        order=0,
-                                        step_type='repeat',
-                                        end_condition='iterations',
-                                        end_condition_value=iterations
-                                    )
-                                    
-                                    # Aggiungi all'allenamento
-                                    workout.add_step(current_repeat)
-                                    indent_level = line_indent
+                                        logging.error(f"Errore nel parsing del repeat '{line}': {str(e)}")
+                                        # NON c'è continue qui, continua con il resto del codice
                                 
                                 # Controlla se è la fine di una ripetizione
                                 elif current_repeat and line_indent <= indent_level:
@@ -371,231 +377,10 @@ class ExcelService:
                                     current_repeat = None
                                     indent_level = 0
                                     
-                                    # Ora procediamo normalmente con questo step al livello superiore
-                                    try:
-                                        # Determina il tipo di step
-                                        if ':' not in line:
-                                            logging.warning(f"Linea '{line}' non contiene ':' - saltata")
-                                            continue
-                                        
-                                        step_type, step_data = line.split(':', 1)
-                                        step_type = step_type.strip()
-                                        step_data = step_data.strip()
-                                        
-                                        logging.debug(f"Tipo di step: {step_type}, Dati: {step_data}")
-                                        
-                                        # Parsa i dati dello step
-                                        end_condition = "lap.button"
-                                        end_condition_value = None
-                                        description = ""
-                                        target = None
-                                        
-                                        # Estrai la descrizione se presente
-                                        if '--' in step_data:
-                                            step_data, description = step_data.split('--', 1)
-                                            step_data = step_data.strip()
-                                            description = description.strip()
-                                        
-                                        # Estrai il target se presente
-                                        target_zone_name = None
-                                        if '@' in step_data:
-                                            step_data, target_info = step_data.split('@', 1)
-                                            step_data = step_data.strip()
-                                            target_info = target_info.strip()
-                                            
-                                            # Imposta il tipo di target in base al tipo di sport
-                                            if 'HR' in target_info or 'hr' in target_info:
-                                                target_type = 'heart.rate.zone'
-                                                target_zone_name = target_info
-                                            elif sport_type == 'cycling' and ('pwr' in target_info or target_info in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'recovery', 'threshold', 'sweet_spot']):
-                                                target_type = 'power.zone'
-                                                target_zone_name = target_info
-                                            else:
-                                                target_type = 'pace.zone'
-                                                target_zone_name = target_info
-                                            
-                                            # Crea oggetto target
-                                            target = Target(target_type)
-                                            
-                                            # Aggiungi il nome della zona al target
-                                            if hasattr(target, 'target_zone_name'):
-                                                target.target_zone_name = target_zone_name
-                                            
-                                            # Calcola i valori target in base al tipo e alla configurazione
-                                            if target_type == 'heart.rate.zone' and target_zone_name:
-                                                if target_zone_name.startswith('Z') and '_HR' in target_zone_name:
-                                                    # Zona di frequenza cardiaca
-                                                    heart_rates = config.get('heart_rates', {})
-                                                    max_hr = heart_rates.get('max_hr', 180)
-                                                    
-                                                    if target_zone_name in heart_rates:
-                                                        hr_range = heart_rates[target_zone_name]
-                                                        
-                                                        if '-' in hr_range and 'max_hr' in hr_range:
-                                                            # Formato: 62-76% max_hr
-                                                            parts = hr_range.split('-')
-                                                            min_percent = float(parts[0])
-                                                            max_percent = float(parts[1].split('%')[0])
-                                                            
-                                                            target.from_value = int(min_percent * max_hr / 100)
-                                                            target.to_value = int(max_percent * max_hr / 100)
-                                                elif '-' in target_info and 'bpm' in target_info.lower():
-                                                    # Formato esplicito "140-160 bpm"
-                                                    try:
-                                                        parts = target_info.split('-')
-                                                        min_hr = parts[0].strip()
-                                                        max_hr = parts[1].split('bpm')[0].strip()
-                                                        target.from_value = int(min_hr)
-                                                        target.to_value = int(max_hr)
-                                                    except:
-                                                        logging.warning(f"Impossibile parsare il target HR: {target_info}")
-                                            
-                                            elif target_type == 'pace.zone' and target_zone_name:
-                                                # Zona di passo
-                                                paces = config.get(f'sports.{sport_type}.paces', {})
-                                                if target_zone_name in paces:
-                                                    pace_range = paces[target_zone_name]
-                                                    
-                                                    if '-' in pace_range:
-                                                        # Formato: min:sec-min:sec
-                                                        min_pace, max_pace = pace_range.split('-')
-                                                    else:
-                                                        # Formato: min:sec
-                                                        min_pace = max_pace = pace_range
-                                                    
-                                                    # Funzione per convertire mm:ss in secondi
-                                                    def pace_to_seconds(pace_str):
-                                                        try:
-                                                            parts = pace_str.strip().split(':')
-                                                            return int(parts[0]) * 60 + int(parts[1])
-                                                        except:
-                                                            return 0
-                                                    
-                                                    min_secs = pace_to_seconds(min_pace)
-                                                    max_secs = pace_to_seconds(max_pace)
-                                                    
-                                                    if min_secs > 0 and max_secs > 0:
-                                                        # Converti da secondi/km a m/s
-                                                        target.from_value = 1000 / max_secs
-                                                        target.to_value = 1000 / min_secs
-                                            
-                                            elif target_type == 'power.zone' and target_zone_name:
-                                                # Zona di potenza
-                                                power_values = config.get('sports.cycling.power_values', {})
-                                                if target_zone_name in power_values:
-                                                    power_range = power_values[target_zone_name]
-                                                    
-                                                    if isinstance(power_range, str):
-                                                        if '-' in power_range:
-                                                            # Formato: N-N
-                                                            min_power, max_power = power_range.split('-')
-                                                            try:
-                                                                target.from_value = int(min_power.strip())
-                                                                target.to_value = int(max_power.strip())
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il range di potenza: {power_range}")
-                                                        elif power_range.startswith('<'):
-                                                            # Formato: <N
-                                                            try:
-                                                                power_val = int(power_range[1:].strip())
-                                                                target.from_value = 0
-                                                                target.to_value = power_val
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                                        elif power_range.endswith('+'):
-                                                            # Formato: N+
-                                                            try:
-                                                                power_val = int(power_range[:-1].strip())
-                                                                target.from_value = power_val
-                                                                target.to_value = 9999
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                                        else:
-                                                            # Valore singolo
-                                                            try:
-                                                                power_val = int(power_range.strip())
-                                                                target.from_value = power_val
-                                                                target.to_value = power_val
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                        
-                                        # Parsa la condizione di fine e il valore
-                                        if 'lap-button' in step_data:
-                                            end_condition = 'lap.button'
-                                        elif 'min' in step_data:
-                                            end_condition = 'time'
-                                            # Estrai il tempo in minuti/secondi
-                                            time_part = step_data.split(' ')[0]
-                                            logging.debug(f"Parte tempo: {time_part}")
-                                            
-                                            # Rimuovi 'min' se presente
-                                            if 'min' in time_part:
-                                                time_part = time_part.replace('min', '')
-                                            
-                                            if ':' in time_part:
-                                                # Formato mm:ss
-                                                try:
-                                                    mins, secs = time_part.split(':')
-                                                    end_condition_value = int(mins.strip()) * 60 + int(secs.strip())
-                                                    logging.debug(f"Tempo parsato: {mins}:{secs} = {end_condition_value}s")
-                                                except Exception as e:
-                                                    end_condition_value = 60
-                                                    logging.warning(f"Errore nel parsing del tempo '{time_part}': {e}")
-                                            else:
-                                                # Formato mm (solo minuti)
-                                                try:
-                                                    mins = time_part.strip()
-                                                    end_condition_value = int(mins) * 60
-                                                    logging.debug(f"Tempo parsato: {mins}min = {end_condition_value}s")
-                                                except Exception as e:
-                                                    end_condition_value = 60
-                                                    logging.warning(f"Errore nel parsing del tempo '{time_part}': {e}")
-                                        elif step_data.strip().endswith('m') and not step_data.strip().endswith('km'):
-                                            # Metri
-                                            end_condition = 'distance'
-                                            try:
-                                                # Rimuovi 'm' alla fine
-                                                distance_part = step_data.split(' ')[0].replace('m', '')
-                                                distance = float(distance_part.strip())
-                                                end_condition_value = distance
-                                                logging.debug(f"Distanza parsata: {distance}m")
-                                            except Exception as e:
-                                                end_condition_value = 100
-                                                logging.warning(f"Errore nel parsing della distanza '{step_data}': {e}")
-                                        elif 'km' in step_data:
-                                            end_condition = 'distance'
-                                            try:
-                                                # Rimuovi 'km' alla fine
-                                                distance_part = step_data.split(' ')[0].replace('km', '')
-                                                distance = float(distance_part.strip())
-                                                end_condition_value = distance * 1000  # Converti in metri
-                                                logging.debug(f"Distanza parsata: {distance}km = {end_condition_value}m")
-                                            except Exception as e:
-                                                end_condition_value = 1000
-                                                logging.warning(f"Errore nel parsing della distanza '{step_data}': {e}")
-                                        
-                                        # Crea lo step
-                                        step = WorkoutStep(
-                                            order=0,
-                                            step_type=step_type,
-                                            description=description,
-                                            end_condition=end_condition,
-                                            end_condition_value=end_condition_value,
-                                            target=target
-                                        )
-                                        
-                                        logging.debug(f"Creato step: {step}")
-                                        
-                                        # Questo step va aggiunto all'allenamento principale, NON al repeat
-                                        # (che abbiamo già chiuso)
-                                        workout.add_step(step)
-                                        logging.debug(f"Step aggiunto all'allenamento (fuori dal repeat)")
-                                        
-                                    except Exception as e:
-                                        logging.error(f"Errore nel parsing dello step '{line}': {str(e)}")
+                                    # NON processare questo step qui, lascia che venga processato nel blocco else sotto
                                 
-                                # Altrimenti è uno step normale
-                                else:
+                                # Se non è un repeat e non è la fine di un repeat, è uno step normale
+                                if not line.startswith('repeat'):
                                     try:
                                         # Determina il tipo di step
                                         if ':' not in line:
@@ -621,159 +406,165 @@ class ExcelService:
                                             description = description.strip()
                                         
                                         # Estrai il target se presente
-                                        target_zone_name = None
                                         if '@' in step_data:
-                                            step_data, target_info = step_data.split('@', 1)
+                                            step_data, target_data = step_data.split('@', 1)
                                             step_data = step_data.strip()
-                                            target_info = target_info.strip()
+                                            target_data = target_data.strip()
                                             
-                                            # Imposta il tipo di target in base al tipo di sport
-                                            if 'HR' in target_info or 'hr' in target_info:
-                                                target_type = 'heart.rate.zone'
-                                                target_zone_name = target_info
-                                            elif sport_type == 'cycling' and ('pwr' in target_info or target_info in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'recovery', 'threshold', 'sweet_spot']):
-                                                target_type = 'power.zone'
-                                                target_zone_name = target_info
-                                            else:
-                                                target_type = 'pace.zone'
-                                                target_zone_name = target_info
-                                            
-                                            # Crea oggetto target
-                                            target = Target(target_type)
-                                            
-                                            # Aggiungi il nome della zona al target
-                                            if hasattr(target, 'target_zone_name'):
-                                                target.target_zone_name = target_zone_name
-                                            
-                                            # Calcola i valori target in base al tipo e alla configurazione
-                                            if target_type == 'heart.rate.zone' and target_zone_name:
-                                                if target_zone_name.startswith('Z') and '_HR' in target_zone_name:
-                                                    # Zona di frequenza cardiaca
-                                                    heart_rates = config.get('heart_rates', {})
-                                                    max_hr = heart_rates.get('max_hr', 180)
+                                            # Determina il tipo di target
+                                            if target_data.startswith('Z') and '_HR' in target_data:
+                                                # Zona di frequenza cardiaca
+                                                target_type = "heart.rate.zone"
+                                                
+                                                # Ottieni i valori HR dalla configurazione
+                                                heart_rates = config.get('heart_rates', {})
+                                                max_hr = int(heart_rates.get('max_hr', 180))
+                                                
+                                                # Cerca la zona corrispondente
+                                                if target_data in heart_rates:
+                                                    hr_range = heart_rates[target_data]
                                                     
-                                                    if target_zone_name in heart_rates:
-                                                        hr_range = heart_rates[target_zone_name]
+                                                    if '-' in hr_range and 'max_hr' in hr_range:
+                                                        # Formato: 62-76% max_hr
+                                                        parts = hr_range.split('-')
+                                                        min_percent = float(parts[0])
+                                                        max_percent = float(parts[1].split('%')[0])
                                                         
-                                                        if '-' in hr_range and 'max_hr' in hr_range:
-                                                            # Formato: 62-76% max_hr
-                                                            parts = hr_range.split('-')
-                                                            min_percent = float(parts[0])
-                                                            max_percent = float(parts[1].split('%')[0])
-                                                            
-                                                            target.from_value = int(min_percent * max_hr / 100)
-                                                            target.to_value = int(max_percent * max_hr / 100)
-                                                elif '-' in target_info and 'bpm' in target_info.lower():
-                                                    # Formato esplicito "140-160 bpm"
-                                                    try:
-                                                        parts = target_info.split('-')
-                                                        min_hr = parts[0].strip()
-                                                        max_hr = parts[1].split('bpm')[0].strip()
-                                                        target.from_value = int(min_hr)
-                                                        target.to_value = int(max_hr)
-                                                    except:
-                                                        logging.warning(f"Impossibile parsare il target HR: {target_info}")
+                                                        # Converti in valori assoluti
+                                                        target_from = int(min_percent * max_hr / 100)
+                                                        target_to = int(max_percent * max_hr / 100)
+                                                        target = Target(target_type, target_to, target_from)
+                                                        target.target_zone_name = target_data
+                                                    else:
+                                                        # Default se formato non riconosciuto
+                                                        target = Target(target_type, 140, 120)
+                                                        target.target_zone_name = target_data
+                                                else:
+                                                    # Default se la zona non è trovata
+                                                    target = Target(target_type, 140, 120)
                                             
-                                            elif target_type == 'pace.zone' and target_zone_name:
+                                            elif target_data.startswith('Z') or target_data in ['recovery', 'threshold', 'marathon', 'race_pace']:
                                                 # Zona di passo
-                                                paces = config.get(f'sports.{sport_type}.paces', {})
-                                                if target_zone_name in paces:
-                                                    pace_range = paces[target_zone_name]
+                                                target_type = "pace.zone"
+                                                
+                                                # Ottieni i valori di passo dalla configurazione
+                                                paces = config.get('sports.running.paces', {})
+                                                
+                                                # Cerca la zona corrispondente
+                                                if target_data in paces:
+                                                    pace_range = paces[target_data]
                                                     
                                                     if '-' in pace_range:
                                                         # Formato: min:sec-min:sec
                                                         min_pace, max_pace = pace_range.split('-')
-                                                    else:
-                                                        # Formato: min:sec
-                                                        min_pace = max_pace = pace_range
-                                                    
-                                                    # Funzione per convertire mm:ss in secondi
-                                                    def pace_to_seconds(pace_str):
-                                                        try:
+                                                        
+                                                        # Converti da min:sec a secondi
+                                                        def parse_pace(pace_str):
                                                             parts = pace_str.strip().split(':')
                                                             return int(parts[0]) * 60 + int(parts[1])
-                                                        except:
-                                                            return 0
-                                                    
-                                                    min_secs = pace_to_seconds(min_pace)
-                                                    max_secs = pace_to_seconds(max_pace)
-                                                    
-                                                    if min_secs > 0 and max_secs > 0:
-                                                        # Converti da secondi/km a m/s
-                                                        target.from_value = 1000 / max_secs
-                                                        target.to_value = 1000 / min_secs
+                                                        
+                                                        try:
+                                                            min_pace_secs = parse_pace(min_pace)
+                                                            max_pace_secs = parse_pace(max_pace)
+                                                            
+                                                            # Converti da secondi a m/s (inverti min e max)
+                                                            target_from = 1000 / max_pace_secs  # Passo più veloce
+                                                            target_to = 1000 / min_pace_secs    # Passo più lento
+                                                            target = Target(target_type, target_to, target_from)
+                                                            target.target_zone_name = target_data
+                                                        except (ValueError, IndexError):
+                                                            # Default se non riesce a interpretare
+                                                            target = Target(target_type, 2.5, 3.0)
+                                                            target.target_zone_name = target_data
+                                                    else:
+                                                        # Valore singolo
+                                                        try:
+                                                            pace_parts = pace_range.strip().split(':')
+                                                            pace_secs = int(pace_parts[0]) * 60 + int(pace_parts[1])
+                                                            # Per un valore singolo, usa lo stesso valore per from e to
+                                                            pace_ms = 1000 / pace_secs
+                                                            target = Target(target_type, pace_ms, pace_ms)
+                                                            target.target_zone_name = target_data
+                                                        except (ValueError, IndexError):
+                                                            # Default se non riesce a interpretare
+                                                            target = Target(target_type, 3.0, 3.0)
+                                                            target.target_zone_name = target_data
+                                                else:
+                                                    # Default se la zona non è trovata
+                                                    target = Target(target_type, 2.5, 3.0)
                                             
-                                            elif target_type == 'power.zone' and target_zone_name:
-                                                # Zona di potenza
-                                                power_values = config.get('sports.cycling.power_values', {})
-                                                if target_zone_name in power_values:
-                                                    power_range = power_values[target_zone_name]
+                                            elif ':' in target_data:
+                                                # Passo specifico (es. "6:00" o "5:00-5:30")
+                                                target_type = "pace.zone"
+                                                
+                                                if '-' in target_data:
+                                                    # Formato: min:sec-min:sec
+                                                    min_pace, max_pace = target_data.split('-')
                                                     
-                                                    if isinstance(power_range, str):
-                                                        if '-' in power_range:
-                                                            # Formato: N-N
-                                                            min_power, max_power = power_range.split('-')
-                                                            try:
-                                                                target.from_value = int(min_power.strip())
-                                                                target.to_value = int(max_power.strip())
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il range di potenza: {power_range}")
-                                                        elif power_range.startswith('<'):
-                                                            # Formato: <N
-                                                            try:
-                                                                power_val = int(power_range[1:].strip())
-                                                                target.from_value = 0
-                                                                target.to_value = power_val
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                                        elif power_range.endswith('+'):
-                                                            # Formato: N+
-                                                            try:
-                                                                power_val = int(power_range[:-1].strip())
-                                                                target.from_value = power_val
-                                                                target.to_value = 9999
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                                        else:
-                                                            # Valore singolo
-                                                            try:
-                                                                power_val = int(power_range.strip())
-                                                                target.from_value = power_val
-                                                                target.to_value = power_val
-                                                            except:
-                                                                logging.warning(f"Impossibile parsare il valore di potenza: {power_range}")
-                                        
-                                        # Parsa la condizione di fine e il valore
-                                        if 'lap-button' in step_data:
-                                            end_condition = 'lap.button'
-                                        elif 'min' in step_data:
-                                            end_condition = 'time'
-                                            # Estrai il tempo in minuti/secondi
-                                            time_part = step_data.split(' ')[0]
-                                            logging.debug(f"Parte tempo: {time_part}")
+                                                    # Converti da min:sec a secondi
+                                                    def parse_pace(pace_str):
+                                                        parts = pace_str.strip().split(':')
+                                                        return int(parts[0]) * 60 + int(parts[1])
+                                                    
+                                                    try:
+                                                        min_pace_secs = parse_pace(min_pace)
+                                                        max_pace_secs = parse_pace(max_pace)
+                                                        
+                                                        # Converti da secondi a m/s (inverti min e max)
+                                                        target_from = 1000 / max_pace_secs  # Passo più veloce
+                                                        target_to = 1000 / min_pace_secs    # Passo più lento
+                                                        target = Target(target_type, target_to, target_from)
+                                                    except (ValueError, IndexError):
+                                                        # Default se non riesce a interpretare
+                                                        target = Target(target_type, 2.5, 3.0)
+                                                else:
+                                                    # Formato: min:sec (passo singolo)
+                                                    try:
+                                                        parts = target_data.strip().split(':')
+                                                        pace_secs = int(parts[0]) * 60 + int(parts[1])
+                                                        
+                                                        # Per un passo singolo, usa lo stesso valore per from e to
+                                                        pace_ms = 1000 / pace_secs
+                                                        target = Target(target_type, pace_ms, pace_ms)
+                                                    except (ValueError, IndexError):
+                                                        # Default se non riesce a interpretare
+                                                        target = Target(target_type, 3.0, 3.0)
                                             
-                                            # Rimuovi 'min' se presente
-                                            if 'min' in time_part:
-                                                time_part = time_part.replace('min', '')
-                                            
-                                            if ':' in time_part:
-                                                # Formato mm:ss
-                                                try:
-                                                    mins, secs = time_part.split(':')
-                                                    end_condition_value = int(mins.strip()) * 60 + int(secs.strip())
-                                                    logging.debug(f"Tempo parsato: {mins}:{secs} = {end_condition_value}s")
-                                                except Exception as e:
-                                                    end_condition_value = 60
-                                                    logging.warning(f"Errore nel parsing del tempo '{time_part}': {e}")
                                             else:
-                                                # Formato mm (solo minuti)
-                                                try:
-                                                    mins = time_part.strip()
-                                                    end_condition_value = int(mins) * 60
+                                                # Altri tipi di target...
+                                                target = Target("no.target", None, None)
+                                        
+                                        # Parsa la durata/distanza
+                                        if step_data == 'lap-button':
+                                            end_condition = 'lap.button'
+                                        elif ':' in step_data and 'min' in step_data:
+                                            # Minuti con secondi: 5:30min
+                                            end_condition = 'time'
+                                            try:
+                                                time_part = step_data.replace('min', '').strip()
+                                                if ':' in time_part:
+                                                    mins, secs = time_part.split(':')
+                                                    end_condition_value = int(mins) * 60 + int(secs)
+                                                    logging.debug(f"Tempo parsato: {mins}:{secs}min = {end_condition_value}s")
+                                                else:
+                                                    # Solo minuti
+                                                    mins = int(time_part)
+                                                    end_condition_value = mins * 60
                                                     logging.debug(f"Tempo parsato: {mins}min = {end_condition_value}s")
-                                                except Exception as e:
-                                                    end_condition_value = 60
-                                                    logging.warning(f"Errore nel parsing del tempo '{time_part}': {e}")
+                                            except Exception as e:
+                                                end_condition_value = 60
+                                                logging.warning(f"Errore nel parsing del tempo '{step_data}': {e}")
+                                        elif 'min' in step_data:
+                                            # Solo minuti: 10min
+                                            end_condition = 'time'
+                                            try:
+                                                time_part = step_data.replace('min', '').strip()
+                                                mins = int(time_part)
+                                                end_condition_value = mins * 60
+                                                logging.debug(f"Tempo parsato: {mins}min = {end_condition_value}s")
+                                            except Exception as e:
+                                                end_condition_value = 60
+                                                logging.warning(f"Errore nel parsing del tempo '{time_part}': {e}")
                                         elif step_data.strip().endswith('m') and not step_data.strip().endswith('km'):
                                             # Metri
                                             end_condition = 'distance'
@@ -820,6 +611,8 @@ class ExcelService:
                                         
                                     except Exception as e:
                                         logging.error(f"Errore nel parsing dello step '{line}': {str(e)}")
+                                        continue
+
                         
                         # Aggiungi l'allenamento alla lista degli importati
                         imported_workouts.append((workout_name, workout))
@@ -836,6 +629,7 @@ class ExcelService:
         except Exception as e:
             logging.error(f"Errore nell'importazione degli allenamenti da Excel: {str(e)}")
             raise
+
 
     @staticmethod
     def export_workouts(workouts: List[Tuple[str, Workout]], file_path: str, custom_config: Optional[Dict[str, Any]] = None) -> None:
@@ -1340,6 +1134,7 @@ class ExcelService:
         
         return "\n".join(steps_text)
 
+
     @staticmethod
     def format_step_for_export(step: WorkoutStep, indent_level: int = 0) -> str:
         """
@@ -1396,7 +1191,10 @@ class ExcelService:
                 if step.target.target == 'heart.rate.zone' and step.target.from_value and step.target.to_value:
                     from_value = int(step.target.from_value)
                     to_value = int(step.target.to_value)
-                    target_text = f" @ {from_value}-{to_value} bpm"
+                    if from_value == to_value:
+                        target_text = f" @ {from_value} bpm"
+                    else:
+                        target_text = f" @ {from_value}-{to_value} bpm"
                 
                 elif step.target.target == 'pace.zone' and step.target.from_value and step.target.to_value:
                     # Converti da m/s a min/km
@@ -1412,7 +1210,11 @@ class ExcelService:
                     from_pace = f"{from_pace_mins}:{from_pace_s:02d}"
                     to_pace = f"{to_pace_mins}:{to_pace_s:02d}"
                     
-                    target_text = f" @ {from_pace}-{to_pace}"
+                    # Se i passi sono uguali, è un passo singolo
+                    if from_pace == to_pace:
+                        target_text = f" @ {from_pace}"
+                    else:
+                        target_text = f" @ {from_pace}-{to_pace}"
                 
                 elif step.target.target == 'power.zone' and step.target.from_value and step.target.to_value:
                     from_value = int(step.target.from_value)
@@ -1420,7 +1222,7 @@ class ExcelService:
                     
                     if from_value == 0 and to_value > 0:
                         target_text = f" @ <{to_value}W"
-                    elif from_value > 0 and to_value == 9999:
+                    elif from_value > 0 and to_value >= 9999:
                         target_text = f" @ {from_value}W+"
                     elif from_value == to_value:
                         target_text = f" @ {from_value}W"

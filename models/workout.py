@@ -743,9 +743,9 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
             # Zona di passo (Z1, Z2, recovery, threshold, ecc.)
             target_type = "pace.zone"
             
-            # Ottieni i valori del passo dalla configurazione
+            # Ottieni i valori di passo dalla configurazione
             app_config = get_config()
-            paces = app_config.get('paces', {})
+            paces = app_config.get('sports.running.paces', {})
             
             # Cerca la zona corrispondente
             if target in paces:
@@ -754,90 +754,92 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
                 if '-' in pace_range:
                     # Formato: min:sec-min:sec
                     min_pace, max_pace = pace_range.split('-')
-                    min_pace = min_pace.strip()
-                    max_pace = max_pace.strip()
+                    
+                    # Converti da min:sec a secondi
+                    def parse_pace(pace_str):
+                        parts = pace_str.strip().split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    
+                    try:
+                        min_pace_secs = parse_pace(min_pace)
+                        max_pace_secs = parse_pace(max_pace)
+                        
+                        # Converti da secondi a m/s (inverti min e max)
+                        target_from = 1000 / max_pace_secs  # Passo più veloce
+                        target_to = 1000 / min_pace_secs    # Passo più lento
+                    except (ValueError, IndexError):
+                        # Default se non riesce a interpretare
+                        target_from = 3.0  # ~5:30 min/km
+                        target_to = 2.5    # ~6:40 min/km
                 else:
-                    # Formato: min:sec (valore singolo)
-                    min_pace = max_pace = pace_range.strip()
-                
-                # Converti da min:sec a secondi
-                def pace_to_seconds(pace_str):
-                    parts = pace_str.split(':')
-                    return int(parts[0]) * 60 + int(parts[1])
-                
-                min_pace_secs = pace_to_seconds(min_pace)
-                max_pace_secs = pace_to_seconds(max_pace)
-                
-                # Converti da secondi a m/s (inverti min e max)
-                target_from = 1000 / max_pace_secs  # Passo più veloce
-                target_to = 1000 / min_pace_secs    # Passo più lento
+                    # Valore singolo
+                    try:
+                        pace_parts = pace_range.strip().split(':')
+                        pace_secs = int(pace_parts[0]) * 60 + int(pace_parts[1])
+                        # Per un valore singolo, usa lo stesso valore per from e to
+                        target_from = 1000 / pace_secs
+                        target_to = 1000 / pace_secs
+                    except (ValueError, IndexError):
+                        # Default se non riesce a interpretare
+                        target_from = 3.0
+                        target_to = 3.0
             else:
                 # Default se la zona non è trovata
                 target_from = 3.0  # ~5:30 min/km
                 target_to = 2.5    # ~6:40 min/km
         
-        elif target in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z6', 'recovery', 'threshold', 'sweet_spot']:
-            # Zona di potenza (per ciclismo)
+        elif '-' in target and 'W' in target:
+            # Range di potenza (es. 125-175W o 175+ W)
             target_type = "power.zone"
             
-            # Ottieni i valori di potenza dalla configurazione
-            app_config = get_config()
-            power_values = app_config.get('power_values', {})
+            # Rimuovi 'W' e spazi
+            target_clean = target.replace('W', '').strip()
             
-            # Cerca la zona corrispondente
-            if target in power_values:
-                power_range = power_values[target]
-                
-                if isinstance(power_range, str):
-                    if '-' in power_range:
-                        # Formato: N-N
-                        min_power, max_power = power_range.split('-')
-                        target_from = int(min_power.strip())
-                        target_to = int(max_power.strip())
-                    elif power_range.startswith('<'):
-                        # Formato: <N
-                        power_val = int(power_range[1:].strip())
-                        target_from = 0
-                        target_to = power_val
-                    elif power_range.endswith('+'):
-                        # Formato: N+
-                        power_val = int(power_range[:-1].strip())
-                        target_from = power_val
-                        target_to = 9999  # Valore alto per "infinito"
-                    else:
-                        # Valore singolo
-                        power_val = int(power_range.strip())
-                        target_from = power_val
-                        target_to = power_val
-                else:
-                    # Valore numerico
-                    target_from = power_values[target]
-                    target_to = power_values[target]
-            else:
-                # Default se la zona non è trovata
-                target_from = 200
-                target_to = 250
-                
-        elif '@hr' in target:
-            # Frequenza cardiaca
-            target_type = "heart.rate.zone"
-            target = target.replace('@hr', '').strip()
-            
-            # Estrai i valori se è un intervallo
-            if '-' in target:
-                min_hr, max_hr = target.split('-')
-                target_from = int(min_hr.strip())
-                target_to = int(max_hr.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+            if '+' in target_clean:
+                # Formato: 375+
+                power_val = int(target_clean.replace('+', '').strip())
+                target_from = power_val
+                target_to = 9999  # Valore molto alto per rappresentare +
+            elif '<' in target_clean:
+                # Formato: <125
+                power_val = int(target_clean.replace('<', '').strip())
+                target_from = 0
+                target_to = power_val
+            elif '-' in target_clean:
+                # Formato: 125-175
+                min_power, max_power = target_clean.split('-')
+                target_from = int(min_power.strip())
+                target_to = int(max_power.strip())
             else:
                 # Valore singolo
-                hr_val = int(target.strip().split(' ')[0])  # Rimuovi "bpm" se presente
+                power_val = int(target_clean.strip())
+                target_from = power_val
+                target_to = power_val
+        
+        elif '-' in target and 'bpm' in target:
+            # Range di frequenza cardiaca (es. 120-140 bpm)
+            target_type = "heart.rate.zone"
+            
+            # Rimuovi 'bpm' e spazi
+            target_clean = target.replace('bpm', '').strip()
+            
+            # Estrai i valori se è un intervallo
+            if '-' in target_clean:
+                min_hr, max_hr = target_clean.split('-')
+                target_from = int(min_hr.strip())
+                target_to = int(max_hr.strip())
+            else:
+                # Valore singolo
+                hr_val = int(target_clean.strip())
                 target_from = hr_val
                 target_to = hr_val
-                
-        elif '@pwr' in target:
-            # Potenza
+        
+        elif 'W' in target:
+            # Potenza singola o range (es. 250W)
             target_type = "power.zone"
-            target = target.replace('@pwr', '').strip()
+            
+            # Rimuovi 'W' e spazi
+            target_clean = target.replace('W', '').strip()
             
             # Estrai i valori se è un intervallo
             if '-' in target:
@@ -851,29 +853,48 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
                 target_to = power_val
         
         else:
-            # Cerca di interpretare il target come un passo o un valore numerico
+            # Cerca di interpretare il target come un passo specifico (es. "6:00")
             target_type = "pace.zone"
             
-            # Verifica se il formato è min:sec-min:sec
-            if '-' in target and ':' in target:
-                min_pace, max_pace = target.split('-')
-                
-                # Converti da min:sec a secondi
-                def parse_pace(pace_str):
-                    parts = pace_str.strip().split(':')
-                    return int(parts[0]) * 60 + int(parts[1])
-                
-                try:
-                    min_pace_secs = parse_pace(min_pace)
-                    max_pace_secs = parse_pace(max_pace)
+            # Verifica se il formato è min:sec o min:sec-min:sec
+            if ':' in target:
+                if '-' in target:
+                    # Formato: min:sec-min:sec
+                    min_pace, max_pace = target.split('-')
                     
-                    # Converti da secondi a m/s (inverti min e max)
-                    target_from = 1000 / max_pace_secs  # Passo più veloce
-                    target_to = 1000 / min_pace_secs    # Passo più lento
-                except (ValueError, IndexError):
-                    # Default se non riesce a interpretare
-                    target_from = 3.0  # ~5:30 min/km
-                    target_to = 2.5    # ~6:40 min/km
+                    # Converti da min:sec a secondi
+                    def parse_pace(pace_str):
+                        parts = pace_str.strip().split(':')
+                        return int(parts[0]) * 60 + int(parts[1])
+                    
+                    try:
+                        min_pace_secs = parse_pace(min_pace)
+                        max_pace_secs = parse_pace(max_pace)
+                        
+                        # Converti da secondi a m/s (inverti min e max)
+                        target_from = 1000 / max_pace_secs  # Passo più veloce
+                        target_to = 1000 / min_pace_secs    # Passo più lento
+                    except (ValueError, IndexError):
+                        # Default se non riesce a interpretare
+                        target_from = 3.0  # ~5:30 min/km
+                        target_to = 2.5    # ~6:40 min/km
+                else:
+                    # Formato: min:sec (passo singolo)
+                    try:
+                        parts = target.strip().split(':')
+                        pace_secs = int(parts[0]) * 60 + int(parts[1])
+                        
+                        # Per un passo singolo, usa lo stesso valore per from e to
+                        pace_ms = 1000 / pace_secs
+                        target_from = pace_ms
+                        target_to = pace_ms
+                        
+                        # Non è una zona predefinita, quindi non impostiamo yaml_target_zone
+                        yaml_target_zone = None
+                    except (ValueError, IndexError):
+                        # Default se non riesce a interpretare
+                        target_from = 3.0
+                        target_to = 2.5
             else:
                 # Default se non è un formato riconoscibile
                 target_from = 3.0
@@ -926,7 +947,7 @@ def parse_step(step_type: str, value: str) -> WorkoutStep:
     # Crea il target
     target = Target(target_type, target_to, target_from)
     
-    # Imposta il nome della zona
+    # Imposta il nome della zona solo se è una zona predefinita
     if yaml_target_zone and yaml_target_zone in ['Z1', 'Z2', 'Z3', 'Z4', 'Z5', 'Z1_HR', 'Z2_HR', 'Z3_HR', 'Z4_HR', 'Z5_HR', 
                  'recovery', 'threshold', 'marathon', 'race_pace', 'sweet_spot', 'sprint']:
         target.target_zone_name = yaml_target_zone
