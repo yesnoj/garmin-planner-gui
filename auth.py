@@ -10,7 +10,7 @@ import logging
 import time
 import threading
 import json
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, Tuple
 
 import garth
 
@@ -31,48 +31,187 @@ class GarminAuth:
         self.is_authenticated = False
         self.auth_lock = threading.Lock()
         self.auth_callbacks = []
+        self.mfa_required = False
+        self.temp_credentials = None  # Memorizza temporaneamente le credenziali per MFA
         
         # Crea la cartella se non esiste
         os.makedirs(self.oauth_folder, exist_ok=True)
     
     def login(self, username: str, password: str, callback: Optional[Callable] = None) -> bool:
+            """
+            Effettua il login a Garmin Connect.
+            
+            Args:
+                username: Nome utente (email)
+                password: Password
+                callback: Funzione da chiamare al termine del login
+            
+            Returns:
+                True se il login è riuscito, False altrimenti
+            """
+            def _login_thread():
+                with self.auth_lock:
+                    try:
+                        # Resetta l'autenticazione
+                        self.is_authenticated = False
+                        self.client = None
+                        self.mfa_required = False
+                        
+                        # Salva temporaneamente le credenziali
+                        self.temp_credentials = (username, password)
+                        
+                        # Prepara per intercettare richieste MFA
+                        import builtins
+                        import sys
+                        from io import StringIO
+                        
+                        # Salva l'input originale
+                        original_input = builtins.input
+                        mfa_detected = False
+                        
+                        # Crea una funzione che rileva quando viene richiesto MFA
+                        def detect_mfa_input(prompt=""):
+                            nonlocal mfa_detected
+                            logging.info(f"Input richiesto da garth: {prompt}")
+                            if "mfa" in prompt.lower() or "code" in prompt.lower():
+                                mfa_detected = True
+                                # Solleva un'eccezione speciale per segnalare che è richiesto MFA
+                                raise Exception("MFA_REQUIRED")
+                            return ""
+                        
+                        try:
+                            # Sostituisci l'input per rilevare richieste MFA
+                            builtins.input = detect_mfa_input
+                            
+                            # Tenta il login
+                            garth.login(username, password)
+                            garth.save(self.oauth_folder)
+                            
+                            # Se arriviamo qui, il login è riuscito senza MFA
+                            self.client = GarminClient()
+                            self.is_authenticated = True
+                            
+                            logging.info(f"Logged in as {username}")
+                            
+                            # Notifica i callback
+                            self._notify_auth_callbacks(True, self.client)
+                            
+                            # Chiama il callback specifico se fornito
+                            if callback:
+                                callback(True, self.client)
+                                
+                        except Exception as e:
+                            error_msg = str(e)
+                            logging.error(f"Login error: {error_msg}")
+                            
+                            if "MFA_REQUIRED" in error_msg or mfa_detected:
+                                # MFA è richiesto
+                                self.mfa_required = True
+                                logging.info("MFA required for login - showing MFA interface")
+                                
+                                # Chiama il callback indicando che il login è fallito ma MFA è richiesto
+                                if callback:
+                                    callback(False, None)
+                            else:
+                                # Altro errore di login
+                                self.is_authenticated = False
+                                self.mfa_required = False
+                                
+                                # Notifica i callback
+                                self._notify_auth_callbacks(False, None)
+                                
+                                # Chiama il callback specifico se fornito
+                                if callback:
+                                    callback(False, None)
+                        
+                        finally:
+                            # Ripristina l'input originale
+                            builtins.input = original_input
+                            
+                    except Exception as e:
+                        # Errore esterno al try interno
+                        logging.error(f"Login failed: {str(e)}")
+                        self.is_authenticated = False
+                        
+                        # Notifica i callback
+                        self._notify_auth_callbacks(False, None)
+                        
+                        # Chiama il callback specifico se fornito
+                        if callback:
+                            callback(False, None)
+            
+            # Avvia il login in un thread separato
+            threading.Thread(target=_login_thread).start()
+            return True
+    
+    def submit_mfa_code(self, mfa_code: str, callback: Optional[Callable] = None) -> bool:
         """
-        Effettua il login a Garmin Connect.
+        Invia il codice MFA per completare il login.
         
         Args:
-            username: Nome utente (email)
-            password: Password
-            callback: Funzione da chiamare al termine del login
+            mfa_code: Codice MFA ricevuto via email
+            callback: Funzione da chiamare al termine
         
         Returns:
-            True se il login è riuscito, False altrimenti
+            True se l'invio è riuscito, False altrimenti
         """
-        def _login_thread():
+        def _mfa_thread():
             with self.auth_lock:
                 try:
-                    # Resetta l'autenticazione
-                    self.is_authenticated = False
-                    self.client = None
+                    if not self.temp_credentials:
+                        raise Exception("No credentials stored for MFA")
                     
-                    # Effettua il login
-                    garth.login(username, password)
-                    garth.save(self.oauth_folder)
+                    username, password = self.temp_credentials
                     
-                    # Inizializza il client e aggiorna lo stato
-                    self.client = GarminClient()
-                    self.is_authenticated = True
+                    # Garth richiede il codice MFA tramite input(), dobbiamo fornirlo
+                    # Creiamo un mock dell'input per fornire il codice
+                    import builtins
+                    import sys
+                    from io import StringIO
                     
-                    logging.info(f"Logged in as {username}")
+                    # Salva l'input originale
+                    original_input = builtins.input
+                    original_stdin = sys.stdin
                     
-                    # Notifica i callback
-                    self._notify_auth_callbacks(True, self.client)
+                    # Crea una funzione che restituisce il codice MFA quando richiesto
+                    def mock_input(prompt=""):
+                        logging.info(f"Input richiesto: {prompt}")
+                        if "mfa" in prompt.lower() or "code" in prompt.lower():
+                            logging.info(f"Fornendo codice MFA: {mfa_code}")
+                            return mfa_code
+                        return ""
                     
-                    # Chiama il callback specifico se fornito
-                    if callback:
-                        callback(True, self.client)
+                    try:
+                        # Sostituisci l'input con il nostro mock
+                        builtins.input = mock_input
+                        sys.stdin = StringIO(mfa_code + "\n")
+                        
+                        # Effettua il login (garth chiederà il codice MFA tramite input())
+                        garth.login(username, password)
+                        garth.save(self.oauth_folder)
+                        
+                        # Inizializza il client e aggiorna lo stato
+                        self.client = GarminClient()
+                        self.is_authenticated = True
+                        self.mfa_required = False
+                        self.temp_credentials = None  # Pulisci le credenziali temporanee
+                        
+                        logging.info(f"MFA login successful for {username}")
+                        
+                        # Notifica i callback
+                        self._notify_auth_callbacks(True, self.client)
+                        
+                        # Chiama il callback specifico se fornito
+                        if callback:
+                            callback(True, self.client)
+                            
+                    finally:
+                        # Ripristina l'input originale
+                        builtins.input = original_input
+                        sys.stdin = original_stdin
                         
                 except Exception as e:
-                    logging.error(f"Login failed: {str(e)}")
+                    logging.error(f"MFA login failed: {str(e)}")
                     self.is_authenticated = False
                     
                     # Notifica i callback
@@ -82,8 +221,8 @@ class GarminAuth:
                     if callback:
                         callback(False, None)
         
-        # Avvia il login in un thread separato
-        threading.Thread(target=_login_thread).start()
+        # Avvia il login MFA in un thread separato
+        threading.Thread(target=_mfa_thread).start()
         return True
     
     def resume(self, callback: Optional[Callable] = None) -> bool:
@@ -102,6 +241,7 @@ class GarminAuth:
                     # Resetta l'autenticazione
                     self.is_authenticated = False
                     self.client = None
+                    self.mfa_required = False
                     
                     # Prova a riprendere la sessione
                     garth.resume(self.oauth_folder)
@@ -156,22 +296,23 @@ class GarminAuth:
         """
         with self.auth_lock:
             try:
-                # Cancella i token salvati
+                # Rimuovi i file di sessione
                 session_file = os.path.join(self.oauth_folder, 'session.json')
                 if os.path.exists(session_file):
                     os.remove(session_file)
                 
-                # Resetta l'autenticazione
+                # Resetta lo stato
                 self.is_authenticated = False
                 self.client = None
+                self.mfa_required = False
+                self.temp_credentials = None
                 
-                logging.info("Logged out")
+                logging.info("Logged out successfully")
                 
                 # Notifica i callback
                 self._notify_auth_callbacks(False, None)
                 
                 return True
-                
             except Exception as e:
                 logging.error(f"Logout failed: {str(e)}")
                 return False
@@ -198,11 +339,11 @@ class GarminAuth:
     
     def _notify_auth_callbacks(self, is_authenticated: bool, client: Optional['GarminClient']) -> None:
         """
-        Notifica tutte le funzioni di callback registrate.
+        Notifica tutti i callback registrati.
         
         Args:
-            is_authenticated: True se autenticato, False altrimenti
-            client: Istanza del client Garmin o None
+            is_authenticated: True se l'autenticazione è riuscita
+            client: Client Garmin o None
         """
         for callback in self.auth_callbacks:
             try:

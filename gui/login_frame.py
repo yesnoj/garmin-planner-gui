@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Frame per il login a Garmin Connect.
+Frame per il login a Garmin Connect con supporto MFA.
 """
 
 import os
@@ -17,7 +17,7 @@ from gui.utils import create_tooltip, show_error
 
 
 class LoginFrame(ttk.Frame):
-    """Frame per il login a Garmin Connect."""
+    """Frame per il login a Garmin Connect con supporto MFA."""
     
     def __init__(self, parent: ttk.Notebook, auth: GarminAuth):
         """
@@ -33,6 +33,7 @@ class LoginFrame(ttk.Frame):
         
         # Stato del login
         self.is_logging_in = False
+        self.mfa_mode = False
         
         # Carica l'interfaccia
         self.create_widgets()
@@ -53,12 +54,12 @@ class LoginFrame(ttk.Frame):
         ttk.Label(header_frame, text="Login a Garmin Connect", 
                  style="Title.TLabel").pack(side=tk.LEFT)
         
-        # Form di login
-        form_frame = ttk.LabelFrame(main_frame, text="Inserisci le tue credenziali")
-        form_frame.pack(fill=tk.X, padx=50, pady=20)
+        # Frame per il login normale
+        self.login_frame = ttk.LabelFrame(main_frame, text="Inserisci le tue credenziali")
+        self.login_frame.pack(fill=tk.X, padx=50, pady=20)
         
         # Grid per allineare i campi
-        form_grid = ttk.Frame(form_frame)
+        form_grid = ttk.Frame(self.login_frame)
         form_grid.pack(fill=tk.X, padx=20, pady=20)
         
         # Email
@@ -91,7 +92,41 @@ class LoginFrame(ttk.Frame):
         # Configura il form per espandersi
         form_grid.columnconfigure(1, weight=1)
         
-        # Pulsanti
+        # Frame per MFA (inizialmente nascosto)
+        self.mfa_frame = ttk.LabelFrame(main_frame, text="Autenticazione a due fattori")
+        
+        # Contenuto del frame MFA
+        mfa_content = ttk.Frame(self.mfa_frame)
+        mfa_content.pack(fill=tk.X, padx=20, pady=20)
+        
+        # Istruzioni MFA
+        mfa_info = ttk.Label(mfa_content, 
+                            text="È stata inviata un'email con il codice di verifica.\n"
+                                 "Inserisci il codice ricevuto per completare il login.",
+                            justify=tk.CENTER)
+        mfa_info.pack(pady=(0, 15))
+        
+        # Campo per il codice MFA
+        mfa_grid = ttk.Frame(mfa_content)
+        mfa_grid.pack(fill=tk.X)
+        
+        ttk.Label(mfa_grid, text="Codice di verifica:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
+        self.mfa_code_var = tk.StringVar()
+        self.mfa_code_entry = ttk.Entry(mfa_grid, textvariable=self.mfa_code_var, width=20)
+        self.mfa_code_entry.grid(row=0, column=1, sticky=tk.W, pady=5)
+        
+        create_tooltip(self.mfa_code_entry, 
+                     "Inserisci il codice a 6 cifre ricevuto via email")
+        
+        # Pulsante per inviare il codice MFA
+        self.mfa_submit_button = ttk.Button(mfa_content, text="Verifica codice", command=self.submit_mfa_code)
+        self.mfa_submit_button.pack(pady=(15, 0))
+        
+        # Pulsante per annullare MFA
+        self.mfa_cancel_button = ttk.Button(mfa_content, text="Annulla", command=self.cancel_mfa)
+        self.mfa_cancel_button.pack(pady=(5, 0))
+        
+        # Pulsanti principali
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
         
@@ -122,7 +157,9 @@ class LoginFrame(ttk.Frame):
             "Se non hai ancora un account, puoi crearne uno gratuitamente sul sito "
             "https://connect.garmin.com\n\n"
             "Le credenziali vengono utilizzate solo per autenticarsi con Garmin Connect e non "
-            "vengono mai inviate ad altri server."
+            "vengono mai inviate ad altri server.\n\n"
+            "Se hai abilitato l'autenticazione a due fattori, riceverai un codice via email "
+            "che dovrai inserire per completare il login."
         )
         
         info_label = ttk.Label(info_frame, text=info_text, wraplength=600, justify=tk.LEFT)
@@ -162,6 +199,38 @@ class LoginFrame(ttk.Frame):
             except Exception as e:
                 logging.error(f"Error saving credentials: {e}")
     
+    def show_mfa_mode(self):
+        """Mostra l'interfaccia per l'inserimento del codice MFA."""
+        self.mfa_mode = True
+        
+        # Nascondi il frame di login normale
+        self.login_frame.pack_forget()
+        
+        # Mostra il frame MFA
+        self.mfa_frame.pack(fill=tk.X, padx=50, pady=20)
+        
+        # Pulisci il campo del codice
+        self.mfa_code_var.set("")
+        
+        # Focus sul campo del codice
+        self.mfa_code_entry.focus()
+        
+        # Aggiorna lo stato
+        self.status_var.set("Inserisci il codice MFA ricevuto via email")
+    
+    def hide_mfa_mode(self):
+        """Nasconde l'interfaccia MFA e mostra quella normale."""
+        self.mfa_mode = False
+        
+        # Nascondi il frame MFA
+        self.mfa_frame.pack_forget()
+        
+        # Mostra il frame di login normale
+        self.login_frame.pack(fill=tk.X, padx=50, pady=20)
+        
+        # Aggiorna lo stato
+        self.status_var.set("Pronto per il login")
+    
     def login(self):
         """Effettua il login a Garmin Connect."""
         # Verifica che non sia già in corso un login
@@ -196,6 +265,51 @@ class LoginFrame(ttk.Frame):
         # Effettua il login in un thread separato
         self.auth.login(email, password, self.on_login_complete)
     
+    def submit_mfa_code(self):
+        """Invia il codice MFA per completare il login."""
+        # Ottieni il codice
+        mfa_code = self.mfa_code_var.get().strip()
+        
+        # Verifica che sia stato inserito
+        if not mfa_code:
+            show_error("Errore", "Inserisci il codice di verifica", parent=self)
+            return
+        
+        # Verifica che sia un codice valido (generalmente 6 cifre)
+        if not mfa_code.isdigit() or len(mfa_code) != 6:
+            show_error("Errore", "Il codice deve essere composto da 6 cifre", parent=self)
+            return
+        
+        # Aggiorna lo stato
+        self.status_var.set("Verifica codice in corso...")
+        self.mfa_submit_button.configure(state="disabled")
+        self.mfa_cancel_button.configure(state="disabled")
+        
+        # Mostra l'indicatore di progresso
+        self.progress.pack(side=tk.RIGHT, padx=(5, 0))
+        self.progress.start()
+        
+        # Invia il codice
+        self.auth.submit_mfa_code(mfa_code, self.on_mfa_complete)
+    
+    def cancel_mfa(self):
+        """Annulla il processo MFA e torna al login normale."""
+        # Resetta lo stato
+        self.is_logging_in = False
+        
+        # Ferma l'indicatore di progresso
+        self.progress.stop()
+        self.progress.pack_forget()
+        
+        # Riabilita i pulsanti
+        self.login_button.configure(state="normal")
+        self.resume_button.configure(state="normal")
+        self.mfa_submit_button.configure(state="normal")
+        self.mfa_cancel_button.configure(state="normal")
+        
+        # Torna alla modalità normale
+        self.hide_mfa_mode()
+    
     def resume_session(self):
         """Riprende la sessione precedente."""
         # Verifica che non sia già in corso un login
@@ -219,27 +333,66 @@ class LoginFrame(ttk.Frame):
         self.auth.resume(self.on_login_complete)
     
     def on_login_complete(self, success: bool, client: Optional[GarminClient]):
+            """
+            Callback chiamato al termine del login.
+            
+            Args:
+                success: True se il login è riuscito, False altrimenti
+                client: Client Garmin o None
+            """
+            # Aggiorna lo stato
+            self.is_logging_in = False
+            
+            # Ferma l'indicatore di progresso
+            self.progress.stop()
+            self.progress.pack_forget()
+            
+            # Riabilita i pulsanti
+            self.login_button.configure(state="normal")
+            self.resume_button.configure(state="normal")
+            
+            # Controlla se è richiesto MFA
+            logging.info(f"Login complete - Success: {success}, MFA Required: {self.auth.mfa_required}")
+            
+            # Gestisci il risultato
+            if not success and self.auth.mfa_required:
+                logging.info("Showing MFA interface")
+                # Mostra l'interfaccia MFA
+                self.show_mfa_mode()
+            elif success:
+                self.status_var.set("Login effettuato con successo")
+                
+                # Passa alla scheda successiva
+                if isinstance(self.parent, ttk.Notebook):
+                    current_index = self.parent.index(self.parent.select())
+                    if current_index < len(self.parent.tabs()) - 1:
+                        self.parent.select(current_index + 1)
+                
+            else:
+                self.status_var.set("Login fallito")
+                messagebox.showerror("Errore", "Login fallito. Verifica le credenziali e riprova.", parent=self)
+    
+    def on_mfa_complete(self, success: bool, client: Optional[GarminClient]):
         """
-        Callback chiamato al termine del login.
+        Callback chiamato al termine della verifica MFA.
         
         Args:
-            success: True se il login è riuscito, False altrimenti
+            success: True se la verifica è riuscita
             client: Client Garmin o None
         """
-        # Aggiorna lo stato
-        self.is_logging_in = False
-        
         # Ferma l'indicatore di progresso
         self.progress.stop()
         self.progress.pack_forget()
         
         # Riabilita i pulsanti
-        self.login_button.configure(state="normal")
-        self.resume_button.configure(state="normal")
+        self.mfa_submit_button.configure(state="normal")
+        self.mfa_cancel_button.configure(state="normal")
         
-        # Aggiorna il messaggio di stato
         if success:
-            self.status_var.set("Login effettuato con successo")
+            self.status_var.set("Login con MFA effettuato con successo")
+            
+            # Nascondi l'interfaccia MFA
+            self.hide_mfa_mode()
             
             # Passa alla scheda successiva
             if isinstance(self.parent, ttk.Notebook):
@@ -248,8 +401,8 @@ class LoginFrame(ttk.Frame):
                     self.parent.select(current_index + 1)
             
         else:
-            self.status_var.set("Login fallito")
-            messagebox.showerror("Errore", "Login fallito. Verifica le credenziali e riprova.", parent=self)
+            self.status_var.set("Verifica MFA fallita")
+            messagebox.showerror("Errore", "Codice MFA non valido. Riprova.", parent=self)
     
     def on_activate(self):
         """Chiamato quando il frame viene attivato."""
