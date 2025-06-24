@@ -1025,7 +1025,7 @@ class ImportExportFrame(ttk.Frame):
         # Mostra un progress dialog
         progress_window = tk.Toplevel(self)
         progress_window.title("Esportazione in corso")
-        progress_window.geometry("300x100")
+        progress_window.geometry("400x150")
         progress_window.transient(self)
         progress_window.grab_set()
         
@@ -1046,58 +1046,115 @@ class ImportExportFrame(ttk.Frame):
         message_label = ttk.Label(progress_frame, textvariable=message_var)
         message_label.pack(pady=(0, 10))
         
+        # Contatore
+        counter_var = tk.StringVar(value="0 / 0")
+        counter_label = ttk.Label(progress_frame, textvariable=counter_var)
+        counter_label.pack(pady=(0, 10))
+        
         # Progressbar
         progress_var = tk.DoubleVar(value=0)
         progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100)
         progress_bar.pack(fill=tk.X)
         
+        # Lista per tenere traccia degli errori
+        errors = []
+        
         # Funzione per esportare gli allenamenti
         def export_thread():
             try:
                 exported = 0
+                total = len(selected_workouts)
                 
                 # Per ogni allenamento
                 for i, (name, workout) in enumerate(selected_workouts):
                     try:
                         # Aggiorna il messaggio
                         message_var.set(f"Esportazione di '{name}'...")
+                        counter_var.set(f"{i + 1} / {total}")
                         
                         # Aggiorna la progressbar
-                        progress_var.set((i + 1) / len(selected_workouts) * 100)
+                        progress_var.set((i / total) * 100)
+                        
+                        # Log per debug
+                        logging.info(f"Esportazione allenamento {i+1}/{total}: '{name}'")
                         
                         # Esporta l'allenamento
                         response = self.garmin_client.add_workout(workout)
                         
-                        if response:
+                        if response and 'workoutId' in response:
                             exported += 1
+                            logging.info(f"Allenamento '{name}' esportato con successo (ID: {response['workoutId']})")
+                        else:
+                            error_msg = f"Risposta non valida per '{name}'"
+                            errors.append(error_msg)
+                            logging.error(error_msg)
                         
                     except Exception as e:
-                        logging.error(f"Errore nell'esportazione dell'allenamento '{name}': {str(e)}")
+                        error_msg = f"Errore nell'esportazione di '{name}': {str(e)}"
+                        errors.append(error_msg)
+                        logging.error(error_msg)
+                        # Continua con il prossimo allenamento invece di interrompere
+                        continue
+                
+                # Aggiorna la progressbar al 100%
+                progress_var.set(100)
+                counter_var.set(f"{total} / {total}")
+                message_var.set("Esportazione completata")
+                
+                # Attendi un momento per mostrare il completamento
+                time.sleep(0.5)
                 
                 # Chiudi la finestra di progresso
                 progress_window.destroy()
                 
-                # Mostra messaggio di conferma
-                show_info("Esportazione completata", 
-                        f"Esportati {exported} allenamenti", 
-                        parent=self)
+                # Mostra il riepilogo
+                if exported == total and not errors:
+                    # Tutti gli allenamenti esportati con successo
+                    show_info("Esportazione completata", 
+                            f"Esportati con successo tutti i {exported} allenamenti", 
+                            parent=self)
+                elif exported > 0:
+                    # Alcuni allenamenti esportati con successo
+                    error_details = "\n".join(errors[:5])  # Mostra solo i primi 5 errori
+                    if len(errors) > 5:
+                        error_details += f"\n... e altri {len(errors) - 5} errori"
+                    
+                    show_warning("Esportazione parziale", 
+                               f"Esportati {exported} allenamenti su {total}.\n\n"
+                               f"Errori:\n{error_details}", 
+                               parent=self)
+                else:
+                    # Nessun allenamento esportato
+                    error_details = "\n".join(errors[:5])
+                    if len(errors) > 5:
+                        error_details += f"\n... e altri {len(errors) - 5} errori"
+                    
+                    show_error("Esportazione fallita", 
+                             f"Impossibile esportare gli allenamenti.\n\n"
+                             f"Errori:\n{error_details}", 
+                             parent=self)
                 
                 # Aggiorna la barra di stato
-                self.controller.set_status(f"Esportati {exported} allenamenti in Garmin Connect")
+                self.controller.set_status(f"Esportati {exported} allenamenti su {total} in Garmin Connect")
                 
             except Exception as e:
-                logging.error(f"Errore nell'esportazione in Garmin Connect: {str(e)}")
+                logging.error(f"Errore critico nell'esportazione in Garmin Connect: {str(e)}")
                 
                 # Chiudi la finestra di progresso
-                progress_window.destroy()
+                try:
+                    progress_window.destroy()
+                except:
+                    pass
                 
                 # Mostra messaggio di errore
-                show_error("Errore", 
-                         f"Impossibile esportare gli allenamenti: {str(e)}", 
+                show_error("Errore critico", 
+                         f"Errore critico durante l'esportazione: {str(e)}", 
                          parent=self)
         
         # Avvia il thread di esportazione
-        threading.Thread(target=export_thread).start()
+        import threading
+        import time
+        threading.Thread(target=export_thread, daemon=True).start()
     
     def save_configuration(self):
         """Salva la configurazione."""
