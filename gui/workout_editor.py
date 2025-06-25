@@ -1235,6 +1235,7 @@ class WorkoutEditorFrame(ttk.Frame):
                                     initial_date=initial_date,
                                     callback=on_date_selected)
 
+
     def delete_workout(self):
         """Elimina gli allenamenti selezionati."""
         # Verifica che ci siano allenamenti selezionati
@@ -1262,9 +1263,9 @@ class WorkoutEditorFrame(ttk.Frame):
                 show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
                 return
             
-            eliminated = 0
-            local_eliminated = 0
-            workout_ids_to_remove = []
+            # Prepara le liste degli allenamenti da eliminare
+            workouts_to_delete = []
+            local_workouts_to_delete = []
             
             for item in selection:
                 workout_id = self.workout_tree.item(item, "tags")[0]
@@ -1272,69 +1273,240 @@ class WorkoutEditorFrame(ttk.Frame):
                 
                 # Verifica se è un allenamento locale
                 is_local = False
-                for i, (wid, wdata) in enumerate(self.workouts):
+                for wid, wdata in self.workouts:
                     if wid == workout_id:
-                        if wdata.get('local', False):
+                        if isinstance(wdata, dict) and wdata.get('local', False):
                             is_local = True
-                            # Rimuovi dalla lista locale
-                            workout_ids_to_remove.append(workout_id)
-                            local_eliminated += 1
                         break
                 
-                if not is_local:
+                if is_local or workout_id.startswith("local_"):
+                    local_workouts_to_delete.append((workout_id, workout_name))
+                else:
+                    workouts_to_delete.append((workout_id, workout_name))
+            
+            # Se ci sono allenamenti da eliminare da Garmin, mostra la finestra di progresso
+            if workouts_to_delete:
+                # Mostra finestra di progresso
+                progress_window = tk.Toplevel(self)
+                progress_window.title("Eliminazione in corso")
+                progress_window.geometry("400x150")
+                progress_window.transient(self)
+                progress_window.grab_set()
+                
+                # Centra la finestra
+                progress_window.update_idletasks()
+                width = progress_window.winfo_width()
+                height = progress_window.winfo_height()
+                x = (progress_window.winfo_screenwidth() // 2) - (width // 2)
+                y = (progress_window.winfo_screenheight() // 2) - (height // 2)
+                progress_window.geometry(f"{width}x{height}+{x}+{y}")
+                
+                # Frame principale
+                progress_frame = ttk.Frame(progress_window, padding=20)
+                progress_frame.pack(fill=tk.BOTH, expand=True)
+                
+                # Messaggio
+                message_var = tk.StringVar(value="Eliminazione in corso...")
+                message_label = ttk.Label(progress_frame, textvariable=message_var)
+                message_label.pack(pady=(0, 10))
+                
+                # Contatore
+                counter_var = tk.StringVar(value="0 / 0")
+                counter_label = ttk.Label(progress_frame, textvariable=counter_var)
+                counter_label.pack(pady=(0, 10))
+                
+                # Progressbar
+                progress_var = tk.DoubleVar(value=0)
+                progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100)
+                progress_bar.pack(fill=tk.X)
+                
+                # Lista per tenere traccia degli errori
+                errors = []
+                
+                # Funzione per eliminare gli allenamenti
+                def delete_thread():
                     try:
-                        # Elimina l'allenamento da Garmin Connect
-                        response = self.garmin_client.delete_workout(workout_id)
-                        # Se l'eliminazione ha avuto successo, aggiungi l'ID alla lista per la rimozione
-                        if response or response == {}:  # A volte l'API restituisce un dict vuoto in caso di successo
-                            workout_ids_to_remove.append(workout_id)
-                            eliminated += 1
+                        deleted = 0
+                        total = len(workouts_to_delete)
+                        
+                        # Per ogni allenamento da eliminare
+                        for i, (workout_id, workout_name) in enumerate(workouts_to_delete):
+                            try:
+                                # Aggiorna il messaggio
+                                message_var.set(f"Eliminazione di '{workout_name}'...")
+                                counter_var.set(f"{i + 1} / {total}")
+                                
+                                # Aggiorna la progressbar
+                                progress_var.set((i / total) * 100)
+                                
+                                # Log per debug
+                                logging.info(f"Eliminazione allenamento {i+1}/{total}: '{workout_name}' (ID: {workout_id})")
+                                
+                                # Elimina l'allenamento
+                                try:
+                                    response = self.garmin_client.delete_workout(workout_id)
+                                    # Per DELETE, HTTP 204 (No Content) è successo
+                                    # Garmin non restituisce contenuto, quindi response può essere None
+                                    # Se delete_workout solleva un'eccezione, allora è fallito
+                                    deleted += 1
+                                    logging.info(f"Allenamento '{workout_name}' eliminato con successo")
+                                except Exception as delete_error:
+                                    # Solo se c'è un'eccezione consideriamo fallita l'eliminazione
+                                    error_msg = f"Impossibile eliminare '{workout_name}': {str(delete_error)}"
+                                    errors.append(error_msg)
+                                    logging.error(error_msg)
+                                
+                            except Exception as e:
+                                error_msg = f"Errore nell'eliminazione di '{workout_name}': {str(e)}"
+                                errors.append(error_msg)
+                                logging.error(error_msg)
+                                # Continua con il prossimo allenamento
+                                continue
+                        
+                        # Aggiorna la progressbar al 100%
+                        progress_var.set(100)
+                        counter_var.set(f"{total} / {total}")
+                        message_var.set("Eliminazione completata")
+                        
+                        # Attendi un momento per mostrare il completamento
+                        import time
+                        time.sleep(0.5)
+                        
+                        # Chiudi la finestra di progresso
+                        progress_window.destroy()
+                        
+                        # Elimina anche gli allenamenti locali (senza progress bar)
+                        local_deleted = len(local_workouts_to_delete)
+                        
+                        # Aggiorna la lista degli allenamenti se qualcosa è stato eliminato
+                        if deleted > 0 or local_deleted > 0:
+                            # Raccogli gli ID degli allenamenti eliminati con successo
+                            deleted_ids = set()
+                            error_names = set()
+                            
+                            # Estrai i nomi degli allenamenti che hanno avuto errori
+                            for error in errors:
+                                # Gli errori hanno il formato "Impossibile eliminare 'nome': ..."
+                                if "Impossibile eliminare '" in error:
+                                    start = error.find("'") + 1
+                                    end = error.find("'", start)
+                                    if end > start:
+                                        error_names.add(error[start:end])
+                            
+                            # Aggiungi gli ID degli allenamenti eliminati con successo
+                            for wid, wname in workouts_to_delete:
+                                if wname not in error_names:
+                                    deleted_ids.add(wid)
+                            
+                            # Aggiungi gli ID degli allenamenti locali
+                            for wid, _ in local_workouts_to_delete:
+                                deleted_ids.add(wid)
+                            
+                            # Rimuovi dalla lista workouts
+                            self.workouts = [(wid, wdata) for wid, wdata in self.workouts 
+                                           if wid not in deleted_ids]
+                            
+                            # Rimuovi gli elementi dalla vista dell'albero
+                            for item in selection:
+                                self.workout_tree.delete(item)
+                            
+                            # Se era selezionato l'allenamento corrente, resettalo
+                            if self.current_workout_id in deleted_ids:
+                                self.current_workout = None
+                                self.current_workout_id = None
+                                self.current_workout_modified = False
+                                self.update_steps_list()
+                                self.save_button.config(state="disabled")
+                                self.send_button.config(state="disabled")
+                                self.discard_button.config(state="disabled")
+                            
+                            # Aggiorna la lista da Garmin
+                            self.refresh_workouts()
+                        
+                        # Mostra il riepilogo
+                        if deleted == total and not errors and local_deleted == 0:
+                            # Tutti eliminati con successo
+                            show_info("Eliminazione completata", 
+                                    f"Eliminati con successo tutti i {deleted} allenamenti", 
+                                    parent=self)
+                        elif deleted > 0 or local_deleted > 0:
+                            # Alcuni eliminati con successo
+                            msg = []
+                            if deleted > 0:
+                                msg.append(f"{deleted} allenamenti eliminati da Garmin Connect")
+                            if local_deleted > 0:
+                                msg.append(f"{local_deleted} allenamenti locali eliminati")
+                            
+                            result_msg = "\n".join(msg)
+                            
+                            if errors:
+                                error_details = "\n".join(errors[:5])
+                                if len(errors) > 5:
+                                    error_details += f"\n... e altri {len(errors) - 5} errori"
+                                result_msg += f"\n\nErrori:\n{error_details}"
+                                show_warning("Eliminazione parziale", result_msg, parent=self)
+                            else:
+                                show_info("Eliminazione completata", result_msg, parent=self)
+                        else:
+                            # Nessun allenamento eliminato
+                            error_details = "\n".join(errors[:5])
+                            if len(errors) > 5:
+                                error_details += f"\n... e altri {len(errors) - 5} errori"
+                            
+                            show_error("Eliminazione fallita", 
+                                     f"Impossibile eliminare gli allenamenti.\n\n"
+                                     f"Errori:\n{error_details}", 
+                                     parent=self)
+                        
+                        # Aggiorna la barra di stato
+                        total_deleted = deleted + local_deleted
+                        self.controller.set_status(f"Eliminati {total_deleted} allenamenti")
+                        
                     except Exception as e:
-                        logging.error(f"Errore nell'eliminazione dell'allenamento: {str(e)}")
-                        show_error("Errore", 
-                                 f"Impossibile eliminare l'allenamento '{workout_name}': {str(e)}", 
+                        logging.error(f"Errore critico nell'eliminazione: {str(e)}")
+                        
+                        # Chiudi la finestra di progresso
+                        try:
+                            progress_window.destroy()
+                        except:
+                            pass
+                        
+                        # Mostra messaggio di errore
+                        show_error("Errore critico", 
+                                 f"Errore critico durante l'eliminazione: {str(e)}", 
                                  parent=self)
-            
-            # Rimuovi gli allenamenti dalla lista workouts
-            self.workouts = [(wid, wdata) for wid, wdata in self.workouts if wid not in workout_ids_to_remove]
-            
-            # Rimuovi gli elementi selezionati dalla vista dell'albero
-            for item in selection:
-                self.workout_tree.delete(item)
-            
-            # Se è stato eliminato l'allenamento attualmente caricato nell'editor, pulisci l'editor
-            if self.current_workout_id and self.current_workout_id in workout_ids_to_remove:
-                self.current_workout = None
-                self.current_workout_id = None
-                self.current_workout_modified = False
                 
-                # Pulisci i campi dell'editor
-                self.name_var.set("")
-                self.sport_var.set("running")
-                self.date_var.set("")
-                self.description_var.set("")
+                # Avvia il thread di eliminazione
+                import threading
+                threading.Thread(target=delete_thread, daemon=True).start()
                 
-                # Aggiorna la lista degli step (la svuota)
-                self.update_steps_list()
-                
-                # Disabilita i pulsanti
-                self.save_button.config(state="disabled")
-                self.send_button.config(state="disabled")
-                self.discard_button.config(state="disabled")
-            
-            # Mostra messaggio di conferma
-            if eliminated > 0 and local_eliminated > 0:
-                show_info("Allenamenti eliminati", 
-                       f"Eliminati {eliminated} allenamenti da Garmin Connect e {local_eliminated} allenamenti locali", 
-                       parent=self)
-            elif eliminated > 0:
-                show_info("Allenamenti eliminati", 
-                       f"Eliminati {eliminated} allenamenti da Garmin Connect", 
-                       parent=self)
-            elif local_eliminated > 0:
-                show_info("Allenamenti eliminati", 
-                       f"Eliminati {local_eliminated} allenamenti locali", 
-                       parent=self)
+            else:
+                # Solo allenamenti locali da eliminare
+                if local_workouts_to_delete:
+                    # Elimina gli allenamenti locali
+                    workout_ids_to_remove = [wid for wid, _ in local_workouts_to_delete]
+                    
+                    # Rimuovi dalla lista workouts
+                    self.workouts = [(wid, wdata) for wid, wdata in self.workouts 
+                                   if wid not in workout_ids_to_remove]
+                    
+                    # Rimuovi gli elementi dalla vista dell'albero
+                    for item in selection:
+                        self.workout_tree.delete(item)
+                    
+                    # Se era selezionato l'allenamento corrente, resettalo
+                    if self.current_workout_id in workout_ids_to_remove:
+                        self.current_workout = None
+                        self.current_workout_id = None
+                        self.current_workout_modified = False
+                        self.update_steps_list()
+                        self.save_button.config(state="disabled")
+                        self.send_button.config(state="disabled")
+                        self.discard_button.config(state="disabled")
+                    
+                    show_info("Allenamenti eliminati", 
+                           f"Eliminati {len(local_workouts_to_delete)} allenamenti locali", 
+                           parent=self)
                     
         else:  # source == "imported"
             import_export_frame = self.controller.import_export
@@ -1361,39 +1533,28 @@ class WorkoutEditorFrame(ttk.Frame):
             for item in selection:
                 self.workout_tree.delete(item)
             
-            # Ricarica la lista degli allenamenti importati (necessario per aggiornare gli indici)
+            # Ricarica la lista degli allenamenti importati
             self.load_imported_workouts()
+            self.update_workout_list()
             
-            # Se è stato eliminato l'allenamento attualmente caricato nell'editor, pulisci l'editor
+            # Se era selezionato l'allenamento corrente, resettalo
             if self.current_workout_id and self.current_workout_id.startswith("imported_"):
                 try:
-                    index = int(self.current_workout_id.split("_")[1])
-                    if index in indices_to_remove:
+                    current_index = int(self.current_workout_id.split("_")[1])
+                    if current_index in indices_to_remove:
                         self.current_workout = None
                         self.current_workout_id = None
                         self.current_workout_modified = False
-                        
-                        # Pulisci i campi dell'editor
-                        self.name_var.set("")
-                        self.sport_var.set("running")
-                        self.date_var.set("")
-                        self.description_var.set("")
-                        
-                        # Aggiorna la lista degli step (la svuota)
                         self.update_steps_list()
-                        
-                        # Disabilita i pulsanti
                         self.save_button.config(state="disabled")
                         self.send_button.config(state="disabled")
                         self.discard_button.config(state="disabled")
-                except (ValueError, IndexError):
+                except:
                     pass
             
-            # Mostra messaggio di conferma
             show_info("Allenamenti eliminati", 
-                   f"Eliminati {len(indices_to_remove)} allenamenti dalla lista degli importati", 
+                   f"Eliminati {len(indices_to_remove)} allenamenti importati", 
                    parent=self)
-
 
     def on_workout_selected(self, event):
         """
