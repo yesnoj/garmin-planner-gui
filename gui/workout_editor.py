@@ -704,7 +704,12 @@ class WorkoutEditorFrame(ttk.Frame):
         self.send_button = ttk.Button(save_frame, text="Invia a Garmin Connect", 
                                     command=self.send_to_garmin, state="disabled")
         self.send_button.pack(side=tk.RIGHT, padx=(5, 0))
-        
+
+        # Aggiungi tooltip per spiegare la funzionalità multipla
+        create_tooltip(self.send_button, 
+                      "Invia gli allenamenti selezionati nella lista a Garmin Connect.\n" +
+                      "Se nessun allenamento è selezionato, invia l'allenamento corrente nell'editor.")
+
         self.discard_button = ttk.Button(save_frame, text="Annulla modifiche", 
                                       command=self.discard_changes, state="disabled")
         self.discard_button.pack(side=tk.RIGHT, padx=(5, 0))
@@ -1397,15 +1402,35 @@ class WorkoutEditorFrame(ttk.Frame):
         Args:
             event: Evento Tkinter
         """
-        # Ottieni l'item selezionato
+        # Ottieni gli item selezionati
         selection = self.workout_tree.selection()
         
         if selection:
             # Abilita il pulsante per eliminare
             self.delete_button.config(state="normal")
+            
+            # Abilita il pulsante "Invia a Garmin Connect" se siamo connessi
+            if self.garmin_client:
+                self.send_button.config(state="normal")
+            
+            # Se è selezionato un solo allenamento, aggiorna il tooltip
+            if len(selection) == 1:
+                create_tooltip(self.send_button, 
+                              "Invia l'allenamento selezionato a Garmin Connect")
+            else:
+                create_tooltip(self.send_button, 
+                              f"Invia {len(selection)} allenamenti selezionati a Garmin Connect")
         else:
             # Disabilita il pulsante per eliminare
             self.delete_button.config(state="disabled")
+            
+            # Disabilita il pulsante "Invia a Garmin Connect" se non c'è un allenamento corrente
+            if not self.current_workout:
+                self.send_button.config(state="disabled")
+            else:
+                # Ripristina il tooltip originale
+                create_tooltip(self.send_button, 
+                              "Invia l'allenamento corrente nell'editor a Garmin Connect")
     
 
     def on_step_selected(self, index, path=None):
@@ -2573,50 +2598,279 @@ class WorkoutEditorFrame(ttk.Frame):
                    parent=self)
         
     def send_to_garmin(self):
-        """Invia l'allenamento corrente a Garmin Connect."""
+        """Invia gli allenamenti selezionati a Garmin Connect."""
+        # Ottieni gli allenamenti selezionati dalla lista
+        selection = self.workout_tree.selection()
+        
+        # Se non ci sono selezioni, prova con l'allenamento corrente nell'editor
+        if not selection and self.current_workout:
+            # Comportamento originale per retrocompatibilità
+            self._send_single_workout_to_garmin(self.current_workout, self.current_workout_id)
+            return
+        
+        if not selection:
+            show_warning("Attenzione", 
+                       "Seleziona almeno un allenamento da inviare a Garmin Connect", 
+                       parent=self)
+            return
+        
+        # Verifica che ci sia un client Garmin
+        if not self.garmin_client:
+            show_error("Errore", "Devi prima effettuare il login a Garmin Connect", parent=self)
+            return
+        
+        # Ottieni gli allenamenti da inviare
+        selected_workouts = []
+        source = self.source_var.get()
+        
+        # Raccogli gli allenamenti selezionati
+        if source == "garmin":
+            for item in selection:
+                workout_id = self.workout_tree.item(item, "tags")[0]
+                workout_name = self.workout_tree.item(item, "values")[0]
+                
+                # Trova l'allenamento nei dati locali
+                for wid, wdata in self.workouts:
+                    if wid == workout_id:
+                        if isinstance(wdata, Workout):
+                            selected_workouts.append((workout_name, wdata))
+                        else:
+                            # Se è un dict, importalo come Workout
+                            from services.garmin_service import GarminService
+                            service = GarminService(self.garmin_client)
+                            workout = service.import_workout(wdata)
+                            if workout:
+                                selected_workouts.append((workout_name, workout))
+                        break
+                        
+        else:  # source == "imported"
+            import_export_frame = self.controller.import_export
+            
+            for item in selection:
+                workout_id = self.workout_tree.item(item, "tags")[0]
+                workout_name = self.workout_tree.item(item, "values")[0]
+                
+                if workout_id.startswith("imported_"):
+                    index = int(workout_id.split("_")[1])
+                    if index < len(import_export_frame.imported_workouts):
+                        name, workout = import_export_frame.imported_workouts[index]
+                        selected_workouts.append((name, workout))
+        
+        if not selected_workouts:
+            show_error("Errore", "Nessun allenamento valido da inviare", parent=self)
+            return
+        
+        # Chiedi conferma
+        if not ask_yes_no("Conferma invio", 
+                        f"Vuoi inviare {len(selected_workouts)} allenamenti a Garmin Connect?", 
+                        parent=self):
+            return
+        
+        # Mostra finestra di progresso
+        progress_window = tk.Toplevel(self)
+        progress_window.title("Invio in corso")
+        progress_window.geometry("400x150")
+        progress_window.transient(self)
+        progress_window.grab_set()
+        
+        # Centra la finestra
+        progress_window.update_idletasks()
+        width = progress_window.winfo_width()
+        height = progress_window.winfo_height()
+        x = (progress_window.winfo_screenwidth() // 2) - (width // 2)
+        y = (progress_window.winfo_screenheight() // 2) - (height // 2)
+        progress_window.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Frame principale
+        progress_frame = ttk.Frame(progress_window, padding=20)
+        progress_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Messaggio
+        message_var = tk.StringVar(value="Invio in corso...")
+        message_label = ttk.Label(progress_frame, textvariable=message_var)
+        message_label.pack(pady=(0, 10))
+        
+        # Contatore
+        counter_var = tk.StringVar(value="0 / 0")
+        counter_label = ttk.Label(progress_frame, textvariable=counter_var)
+        counter_label.pack(pady=(0, 10))
+        
+        # Progressbar
+        progress_var = tk.DoubleVar(value=0)
+        progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100)
+        progress_bar.pack(fill=tk.X)
+        
+        # Lista per tenere traccia degli errori
+        errors = []
+        
+        # Funzione per inviare gli allenamenti
+        def send_thread():
+            try:
+                sent = 0
+                scheduled = 0
+                total = len(selected_workouts)
+                
+                # Per ogni allenamento
+                for i, (name, workout) in enumerate(selected_workouts):
+                    try:
+                        # Aggiorna il messaggio
+                        message_var.set(f"Invio di '{name}'...")
+                        counter_var.set(f"{i + 1} / {total}")
+                        
+                        # Aggiorna la progressbar
+                        progress_var.set((i / total) * 100)
+                        
+                        # Log per debug
+                        logging.info(f"Invio allenamento {i+1}/{total}: '{name}'")
+                        
+                        # Cerca una data negli step dell'allenamento
+                        date_str = None
+                        date_step = None
+                        
+                        for step in workout.workout_steps:
+                            if hasattr(step, 'date') and step.date:
+                                date_str = step.date  # Formato YYYY-MM-DD
+                                date_step = step
+                                break
+                        
+                        # Rimuovi temporaneamente lo step con la data per l'invio
+                        if date_step:
+                            workout.workout_steps.remove(date_step)
+                        
+                        # Invia l'allenamento
+                        response = self.garmin_client.add_workout(workout)
+                        
+                        # Ripristina lo step con la data
+                        if date_step:
+                            workout.workout_steps.insert(0, date_step)
+                        
+                        if response and 'workoutId' in response:
+                            sent += 1
+                            new_workout_id = str(response['workoutId'])
+                            logging.info(f"Allenamento '{name}' inviato con successo (ID: {new_workout_id})")
+                            
+                            # Pianifica l'allenamento se è specificata una data
+                            if date_str:
+                                try:
+                                    schedule_response = self.garmin_client.schedule_workout(new_workout_id, date_str)
+                                    if schedule_response:
+                                        scheduled += 1
+                                        logging.info(f"Allenamento '{name}' pianificato per {date_str}")
+                                except Exception as e:
+                                    logging.warning(f"Impossibile pianificare '{name}': {str(e)}")
+                        else:
+                            error_msg = f"Risposta non valida per '{name}'"
+                            errors.append(error_msg)
+                            logging.error(error_msg)
+                        
+                    except Exception as e:
+                        error_msg = f"Errore nell'invio di '{name}': {str(e)}"
+                        errors.append(error_msg)
+                        logging.error(error_msg)
+                        # Continua con il prossimo allenamento invece di interrompere
+                        continue
+                
+                # Aggiorna la progressbar al 100%
+                progress_var.set(100)
+                counter_var.set(f"{total} / {total}")
+                message_var.set("Invio completato")
+                
+                # Attendi un momento per mostrare il completamento
+                import time
+                time.sleep(0.5)
+                
+                # Chiudi la finestra di progresso
+                progress_window.destroy()
+                
+                # Aggiorna la lista degli allenamenti se qualcosa è stato inviato
+                if sent > 0:
+                    self.controller.set_status("Aggiornamento della lista allenamenti...")
+                    self.refresh_workouts()
+                
+                # Mostra il riepilogo
+                if sent == total and not errors:
+                    # Tutti gli allenamenti inviati con successo
+                    msg = f"Inviati con successo tutti i {sent} allenamenti"
+                    if scheduled > 0:
+                        msg += f"\n{scheduled} allenamenti pianificati"
+                    show_info("Invio completato", msg, parent=self)
+                elif sent > 0:
+                    # Alcuni allenamenti inviati con successo
+                    error_details = "\n".join(errors[:5])  # Mostra solo i primi 5 errori
+                    if len(errors) > 5:
+                        error_details += f"\n... e altri {len(errors) - 5} errori"
+                    
+                    msg = f"Inviati {sent} allenamenti su {total}"
+                    if scheduled > 0:
+                        msg += f"\n{scheduled} allenamenti pianificati"
+                    msg += f"\n\nErrori:\n{error_details}"
+                    
+                    show_warning("Invio parziale", msg, parent=self)
+                else:
+                    # Nessun allenamento inviato
+                    error_details = "\n".join(errors[:5])
+                    if len(errors) > 5:
+                        error_details += f"\n... e altri {len(errors) - 5} errori"
+                    
+                    show_error("Invio fallito", 
+                             f"Impossibile inviare gli allenamenti.\n\n"
+                             f"Errori:\n{error_details}", 
+                             parent=self)
+                
+                # Aggiorna la barra di stato
+                self.controller.set_status(f"Inviati {sent} allenamenti su {total} a Garmin Connect")
+                
+            except Exception as e:
+                logging.error(f"Errore critico nell'invio a Garmin Connect: {str(e)}")
+                
+                # Chiudi la finestra di progresso
+                try:
+                    progress_window.destroy()
+                except:
+                    pass
+                
+                # Mostra messaggio di errore
+                show_error("Errore critico", 
+                         f"Errore critico durante l'invio: {str(e)}", 
+                         parent=self)
+        
+        # Avvia il thread di invio
+        import threading
+        threading.Thread(target=send_thread, daemon=True).start()
+
+    def _send_single_workout_to_garmin(self, workout, workout_id):
+        """
+        Metodo helper per inviare un singolo allenamento (comportamento originale).
+        
+        Args:
+            workout: L'allenamento da inviare
+            workout_id: ID dell'allenamento corrente
+        """
         # Verifica che ci sia un allenamento corrente
-        if not self.current_workout:
+        if not workout:
+            show_error("Errore", "Nessun allenamento da inviare", parent=self)
             return
         
-        # Ottieni la data dall'interfaccia
-        display_date_str = self.date_var.get()
-        
-        # Verifica che la data sia in un formato valido (GG/MM/AAAA o YYYY-MM-DD)
-        if display_date_str and not is_valid_display_date(display_date_str):
-            show_error("Errore", "La data deve essere nel formato GG/MM/AAAA", parent=self)
-            return
-        
-        # Converti la data nel formato richiesto da Garmin Connect (YYYY-MM-DD)
-        date_str = convert_date_for_garmin(display_date_str)
-        
-        # Aggiorna i dati dell'allenamento dai campi
-        self.current_workout.workout_name = self.name_var.get()
-        self.current_workout.sport_type = self.sport_var.get()
-        self.current_workout.description = self.description_var.get()
-        
-        # Gestisci la data dell'allenamento
+        # Cerca una data negli step dell'allenamento
+        date_str = None
+        display_date_str = None
         date_step = None
         
-        # Cerca uno step esistente con la data
-        for step in self.current_workout.workout_steps:
+        for step in workout.workout_steps:
             if hasattr(step, 'date') and step.date:
+                date_str = step.date  # Formato YYYY-MM-DD
                 date_step = step
+                # Converti per la visualizzazione
+                try:
+                    year, month, day = date_str.split('-')
+                    display_date_str = f"{day}/{month}/{year}"
+                except:
+                    display_date_str = date_str
                 break
         
-        # Se c'è una data nel campo
-        if display_date_str:
-            if date_step:
-                # Aggiorna lo step esistente con la data convertita
-                date_step.date = date_str
-            else:
-                # Crea un nuovo step con la data convertita
-                date_step = WorkoutStep(0, "warmup")
-                date_step.date = date_str
-                # Aggiungi come primo step
-                self.current_workout.workout_steps.insert(0, date_step)
-        elif date_step:
-            # Rimuovi lo step della data se il campo è vuoto
-            self.current_workout.workout_steps.remove(date_step)
+        # Rimuovi temporaneamente lo step con la data per l'invio
+        if date_step:
+            workout.workout_steps.remove(date_step)
         
         # Verifica che ci sia un client Garmin
         if not self.garmin_client:
@@ -2628,7 +2882,7 @@ class WorkoutEditorFrame(ttk.Frame):
             self.controller.set_status("Invio dell'allenamento a Garmin Connect in corso...")
             
             # Crea un nuovo allenamento su Garmin Connect
-            response = self.garmin_client.add_workout(self.current_workout)
+            response = self.garmin_client.add_workout(workout)
             
             # Ottieni l'ID del nuovo allenamento
             if response and 'workoutId' in response:
@@ -2638,15 +2892,15 @@ class WorkoutEditorFrame(ttk.Frame):
                 self.controller.set_status(f"Allenamento creato su Garmin Connect (ID: {new_workout_id})")
                 
                 # Se era un allenamento locale, rimuovilo dalla lista locale
-                if self.current_workout_id and self.current_workout_id.startswith("local_"):
-                    for i, (workout_id, workout_data) in enumerate(self.workouts):
-                        if workout_id == self.current_workout_id:
+                if workout_id and workout_id.startswith("local_"):
+                    for i, (wid, workout_data) in enumerate(self.workouts):
+                        if wid == workout_id:
                             # Rimuovi il vecchio allenamento dalla lista workouts
                             self.workouts.pop(i)
                             break
                 
                 # Aggiorna l'ID corrente
-                old_workout_id = self.current_workout_id
+                old_workout_id = workout_id
                 self.current_workout_id = new_workout_id
                 
                 # Pianifica l'allenamento se è specificata una data
@@ -2664,26 +2918,7 @@ class WorkoutEditorFrame(ttk.Frame):
                 
                 # Aggiorna la lista degli allenamenti da Garmin Connect
                 self.controller.set_status("Aggiornamento della lista allenamenti...")
-                workouts_data = self.garmin_client.list_workouts()
-                
-                # Conserva gli allenamenti locali
-                local_workouts = [(wid, wdata) for wid, wdata in self.workouts if wid.startswith("local_") or (isinstance(wdata, dict) and wdata.get('local', False))]
-                
-                # Trasforma in una lista di tuple (id, data)
-                garmin_workouts = []
-                for workout in workouts_data:
-                    workout_id = str(workout.get('workoutId', ''))
-                    garmin_workouts.append((workout_id, workout))
-                
-                # Unisci gli allenamenti Garmin con quelli locali
-                self.workouts = garmin_workouts + local_workouts
-                
-                # Cancella completamente la lista visibile
-                for item in self.workout_tree.get_children():
-                    self.workout_tree.delete(item)
-                    
-                # Aggiungi tutti gli allenamenti alla UI
-                self.update_workout_list()
+                self.refresh_workouts()
                 
                 # Seleziona il nuovo allenamento nell'albero
                 for item in self.workout_tree.get_children():
@@ -2695,14 +2930,14 @@ class WorkoutEditorFrame(ttk.Frame):
                 # Mostra messaggio di conferma
                 if date_str:
                     show_info("Allenamento inviato e pianificato", 
-                           f"L'allenamento '{self.current_workout.workout_name}' è stato inviato a Garmin Connect e pianificato per il {display_date_str}", 
+                           f"L'allenamento '{workout.workout_name}' è stato inviato a Garmin Connect e pianificato per il {display_date_str}", 
                            parent=self)
-                    self.controller.set_status(f"Allenamento '{self.current_workout.workout_name}' inviato e pianificato per {display_date_str}")
+                    self.controller.set_status(f"Allenamento '{workout.workout_name}' inviato e pianificato per {display_date_str}")
                 else:
                     show_info("Allenamento inviato", 
-                           f"L'allenamento '{self.current_workout.workout_name}' è stato inviato a Garmin Connect", 
+                           f"L'allenamento '{workout.workout_name}' è stato inviato a Garmin Connect", 
                            parent=self)
-                    self.controller.set_status(f"Allenamento '{self.current_workout.workout_name}' inviato a Garmin Connect")
+                    self.controller.set_status(f"Allenamento '{workout.workout_name}' inviato a Garmin Connect")
             else:
                 raise ValueError("Risposta non valida da Garmin Connect")
             
@@ -2712,6 +2947,7 @@ class WorkoutEditorFrame(ttk.Frame):
                      f"Impossibile inviare l'allenamento: {str(e)}", 
                      parent=self)
             self.controller.set_status(f"Errore: {str(e)}")
+
         
     def discard_changes(self):
         """Annulla le modifiche all'allenamento corrente."""
@@ -2815,6 +3051,11 @@ class WorkoutEditorFrame(ttk.Frame):
         
         # Abilita i pulsanti
         self.refresh_button.config(state="normal")
+        
+        # Abilita il pulsante "Invia a Garmin Connect" se ci sono allenamenti selezionati o un allenamento corrente
+        selection = self.workout_tree.selection()
+        if selection or self.current_workout:
+            self.send_button.config(state="normal")
         
         # Aggiorna la lista degli allenamenti
         self.refresh_workouts()
