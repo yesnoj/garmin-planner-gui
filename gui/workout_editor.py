@@ -2076,6 +2076,7 @@ class WorkoutEditorFrame(ttk.Frame):
         # Crea i widget per gli step
         for i, step in enumerate(steps_to_show):
             self.create_step_widget(self.steps_container, step, i)
+
     
     def create_step_widget(self, parent, step, index, indent=0, parent_indices=None):
         """
@@ -2151,11 +2152,7 @@ class WorkoutEditorFrame(ttk.Frame):
             app_config = get_config()
             target_text = "Target: "
             
-            # MODIFICATO: Cerca di trovare la zona corrispondente ai valori
-            if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
-                # Già abbiamo il nome della zona, usiamolo direttamente
-                target_text += f"Zona {step.target.target_zone_name}"
-            elif step.target.target == "pace.zone":
+            if step.target.target == "pace.zone":
                 from_value = step.target.from_value
                 to_value = step.target.to_value
                 
@@ -2167,45 +2164,75 @@ class WorkoutEditorFrame(ttk.Frame):
                     min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
                     max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
                     
-                    # Cerca la zona corrispondente
-                    paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                    # Verifica se c'è un nome di zona salvato e se corrisponde ai valori attuali
                     zone_name = None
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        # Verifica che i valori corrispondano ancora alla zona
+                        paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                        if step.target.target_zone_name in paces:
+                            pace_range = paces[step.target.target_zone_name]
+                            if '-' in pace_range:
+                                zone_min, zone_max = pace_range.split('-')
+                                zone_min = zone_min.strip()
+                                zone_max = zone_max.strip()
+                                
+                                # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
+                                min_secs = self._pace_to_seconds(zone_min)
+                                max_secs = self._pace_to_seconds(zone_max)
+                                step_min_secs = min_pace_secs
+                                step_max_secs = max_pace_secs
+                                
+                                # Usiamo una tolleranza di 5 secondi per ogni valore
+                                if (abs(min_secs - step_min_secs) <= 5 and 
+                                    abs(max_secs - step_max_secs) <= 5):
+                                    zone_name = step.target.target_zone_name
+                            else:
+                                # Zona a valore singolo
+                                zone_secs = self._pace_to_seconds(pace_range.strip())
+                                if abs(zone_secs - min_pace_secs) <= 5 and min_pace_secs == max_pace_secs:
+                                    zone_name = step.target.target_zone_name
                     
-                    for name, pace_range in paces.items():
-                        if '-' in pace_range:
-                            pace_min, pace_max = pace_range.split('-')
-                            pace_min = pace_min.strip()
-                            pace_max = pace_max.strip()
-                            
-                            # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
-                            min_secs = self._pace_to_seconds(pace_min)
-                            max_secs = self._pace_to_seconds(pace_max)
-                            step_min_secs = min_pace_secs
-                            step_max_secs = max_pace_secs
-                            
-                            # Usiamo una tolleranza di 5 secondi per ogni valore
-                            if (abs(min_secs - step_min_secs) <= 5 and 
-                                abs(max_secs - step_max_secs) <= 5):
-                                zone_name = name
-                                break
+                    # Se non c'è zona salvata, cerca comunque una corrispondente
+                    if not zone_name:
+                        paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                        
+                        for name, pace_range in paces.items():
+                            if '-' in pace_range:
+                                pace_min, pace_max = pace_range.split('-')
+                                pace_min = pace_min.strip()
+                                pace_max = pace_max.strip()
+                                
+                                # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
+                                min_secs = self._pace_to_seconds(pace_min)
+                                max_secs = self._pace_to_seconds(pace_max)
+                                step_min_secs = min_pace_secs
+                                step_max_secs = max_pace_secs
+                                
+                                # Usiamo una tolleranza di 5 secondi per ogni valore
+                                if (abs(min_secs - step_min_secs) <= 5 and 
+                                    abs(max_secs - step_max_secs) <= 5):
+                                    zone_name = name
+                                    break
                     
                     if zone_name:
                         # Se abbiamo trovato una zona corrispondente, usiamola
                         target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
                     else:
                         # Altrimenti mostriamo i valori numerici
-                        target_text += f"Passo {min_pace}-{max_pace} min/km"
+                        # Se è un passo singolo (min == max), mostra solo un valore
+                        if min_pace == max_pace:
+                            target_text += f"Passo {min_pace} min/km"
+                        else:
+                            target_text += f"Passo {min_pace}-{max_pace} min/km"
                     
                 elif from_value:  # Solo valore minimo
                     min_pace_secs = int(1000 / from_value)
                     min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
-                    target_text += f"Passo {min_pace} min/km"
+                    target_text += f"Passo > {min_pace} min/km"
                 elif to_value:  # Solo valore massimo
                     max_pace_secs = int(1000 / to_value)
                     max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
-                    target_text += f"Passo {max_pace} min/km"
+                    target_text += f"Passo < {max_pace} min/km"
                     
             elif step.target.target == "heart.rate.zone":
                 from_value = step.target.from_value
@@ -2216,29 +2243,48 @@ class WorkoutEditorFrame(ttk.Frame):
                     heart_rates = app_config.get('heart_rates', {})
                     zone_name = None
                     
-                    for name, hr_range in heart_rates.items():
-                        if name.endswith('_HR'):
-                            # Calcola valori effettivi usando max_hr
-                            max_hr = heart_rates.get('max_hr', 180)
-                            
+                    # Prima controlla se c'è un nome di zona salvato
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        # Verifica che corrisponda ancora
+                        max_hr = heart_rates.get('max_hr', 180)
+                        zone_hr_key = f"{step.target.target_zone_name}_HR"
+                        
+                        if zone_hr_key in heart_rates:
+                            hr_range = heart_rates[zone_hr_key]
                             if '-' in hr_range and 'max_hr' in hr_range:
-                                # Formato: 62-76% max_hr
                                 parts = hr_range.split('-')
                                 min_percent = float(parts[0])
                                 max_percent = float(parts[1].split('%')[0])
                                 hr_min = int(min_percent * max_hr / 100)
                                 hr_max = int(max_percent * max_hr / 100)
                                 
-                                # Controllo con tolleranza
                                 if (abs(hr_min - from_value) <= 3 and 
                                     abs(hr_max - to_value) <= 3):
-                                    zone_name = name.replace('_HR', '')
-                                    break
+                                    zone_name = step.target.target_zone_name.replace('_HR', '')
+                    
+                    # Se non c'è zona salvata o non corrisponde, cerca
+                    if not zone_name:
+                        for name, hr_range in heart_rates.items():
+                            if name.endswith('_HR'):
+                                # Calcola valori effettivi usando max_hr
+                                max_hr = heart_rates.get('max_hr', 180)
+                                
+                                if '-' in hr_range and 'max_hr' in hr_range:
+                                    # Formato: 62-76% max_hr
+                                    parts = hr_range.split('-')
+                                    min_percent = float(parts[0])
+                                    max_percent = float(parts[1].split('%')[0])
+                                    hr_min = int(min_percent * max_hr / 100)
+                                    hr_max = int(max_percent * max_hr / 100)
+                                    
+                                    # Controllo con tolleranza
+                                    if (abs(hr_min - from_value) <= 3 and 
+                                        abs(hr_max - to_value) <= 3):
+                                        zone_name = name.replace('_HR', '')
+                                        break
                     
                     if zone_name:
-                        target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
+                        target_text += f"Zona FC {zone_name}"
                     else:
                         target_text += f"FC {from_value}-{to_value} bpm"
                 
@@ -2256,33 +2302,43 @@ class WorkoutEditorFrame(ttk.Frame):
                     power_values = app_config.get('sports.cycling.power_values', {})
                     zone_name = None
                     
-                    for name, power_range in power_values.items():
-                        if '-' in power_range:
-                            power_min, power_max = power_range.split('-')
-                            if (abs(int(power_min) - from_value) <= 2 and 
-                                abs(int(power_max) - to_value) <= 2):
-                                zone_name = name
-                                break
-                        elif power_range.startswith('<'):
-                            power_val = int(power_range[1:])
-                            if from_value == 0 and to_value == power_val:
-                                zone_name = name
-                                break
-                        elif power_range.endswith('+'):
-                            power_val = int(power_range[:-1])
-                            if from_value == power_val and to_value == 9999:
-                                zone_name = name
-                                break
-                        else:
-                            power_val = int(power_range)
-                            if from_value == power_val and to_value == power_val:
-                                zone_name = name
-                                break
+                    # Prima controlla se c'è un nome di zona salvato
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        if step.target.target_zone_name in power_values:
+                            power_range = power_values[step.target.target_zone_name]
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if (abs(int(power_min) - from_value) <= 2 and 
+                                    abs(int(power_max) - to_value) <= 2):
+                                    zone_name = step.target.target_zone_name
+                    
+                    # Se non c'è zona salvata o non corrisponde, cerca
+                    if not zone_name:
+                        for name, power_range in power_values.items():
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if (abs(int(power_min) - from_value) <= 2 and 
+                                    abs(int(power_max) - to_value) <= 2):
+                                    zone_name = name
+                                    break
+                            elif power_range.startswith('<'):
+                                power_val = int(power_range[1:])
+                                if from_value == 0 and to_value == power_val:
+                                    zone_name = name
+                                    break
+                            elif power_range.endswith('+'):
+                                power_val = int(power_range[:-1])
+                                if from_value == power_val and to_value == 9999:
+                                    zone_name = name
+                                    break
+                            else:
+                                power_val = int(power_range)
+                                if from_value == power_val and to_value == power_val:
+                                    zone_name = name
+                                    break
                     
                     if zone_name:
-                        target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
+                        target_text += f"Zona Potenza {zone_name}"
                     else:
                         target_text += f"Potenza {from_value}-{to_value} W"
                 
@@ -2339,6 +2395,7 @@ class WorkoutEditorFrame(ttk.Frame):
             return int(minutes.strip()) * 60 + int(seconds.strip())
         except (ValueError, TypeError):
             return 0
+
 
     def create_child_step_widget(self, parent, step, index, indent=0, path=None, index_map=None):
         """
@@ -2406,16 +2463,12 @@ class WorkoutEditorFrame(ttk.Frame):
         
         ttk.Label(details_frame, text=end_condition_text).pack(side=tk.LEFT)
         
-        # Target
+        # Target - stessa logica del metodo create_step_widget
         if step.target and step.target.target != "no.target":
             app_config = get_config()
             target_text = "Target: "
             
-            # MODIFICATO: Cerca di trovare la zona corrispondente ai valori
-            if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
-                # Già abbiamo il nome della zona, usiamolo direttamente
-                target_text += f"Zona {step.target.target_zone_name}"
-            elif step.target.target == "pace.zone":
+            if step.target.target == "pace.zone":
                 from_value = step.target.from_value
                 to_value = step.target.to_value
                 
@@ -2427,45 +2480,75 @@ class WorkoutEditorFrame(ttk.Frame):
                     min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
                     max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
                     
-                    # Cerca la zona corrispondente
-                    paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                    # Verifica se c'è un nome di zona salvato e se corrisponde ai valori attuali
                     zone_name = None
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        # Verifica che i valori corrispondano ancora alla zona
+                        paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                        if step.target.target_zone_name in paces:
+                            pace_range = paces[step.target.target_zone_name]
+                            if '-' in pace_range:
+                                zone_min, zone_max = pace_range.split('-')
+                                zone_min = zone_min.strip()
+                                zone_max = zone_max.strip()
+                                
+                                # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
+                                min_secs = self._pace_to_seconds(zone_min)
+                                max_secs = self._pace_to_seconds(zone_max)
+                                step_min_secs = min_pace_secs
+                                step_max_secs = max_pace_secs
+                                
+                                # Usiamo una tolleranza di 5 secondi per ogni valore
+                                if (abs(min_secs - step_min_secs) <= 5 and 
+                                    abs(max_secs - step_max_secs) <= 5):
+                                    zone_name = step.target.target_zone_name
+                            else:
+                                # Zona a valore singolo
+                                zone_secs = self._pace_to_seconds(pace_range.strip())
+                                if abs(zone_secs - min_pace_secs) <= 5 and min_pace_secs == max_pace_secs:
+                                    zone_name = step.target.target_zone_name
                     
-                    for name, pace_range in paces.items():
-                        if '-' in pace_range:
-                            pace_min, pace_max = pace_range.split('-')
-                            pace_min = pace_min.strip()
-                            pace_max = pace_max.strip()
-                            
-                            # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
-                            min_secs = self._pace_to_seconds(pace_min)
-                            max_secs = self._pace_to_seconds(pace_max)
-                            step_min_secs = min_pace_secs
-                            step_max_secs = max_pace_secs
-                            
-                            # Usiamo una tolleranza di 5 secondi per ogni valore
-                            if (abs(min_secs - step_min_secs) <= 5 and 
-                                abs(max_secs - step_max_secs) <= 5):
-                                zone_name = name
-                                break
+                    # Se non c'è zona salvata, cerca comunque una corrispondente
+                    if not zone_name:
+                        paces = app_config.get(f'sports.{self.current_workout.sport_type}.paces', {})
+                        
+                        for name, pace_range in paces.items():
+                            if '-' in pace_range:
+                                pace_min, pace_max = pace_range.split('-')
+                                pace_min = pace_min.strip()
+                                pace_max = pace_max.strip()
+                                
+                                # Controllo se i passi corrispondono alla zona (con tolleranza di alcuni secondi)
+                                min_secs = self._pace_to_seconds(pace_min)
+                                max_secs = self._pace_to_seconds(pace_max)
+                                step_min_secs = min_pace_secs
+                                step_max_secs = max_pace_secs
+                                
+                                # Usiamo una tolleranza di 5 secondi per ogni valore
+                                if (abs(min_secs - step_min_secs) <= 5 and 
+                                    abs(max_secs - step_max_secs) <= 5):
+                                    zone_name = name
+                                    break
                     
                     if zone_name:
                         # Se abbiamo trovato una zona corrispondente, usiamola
                         target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
                     else:
                         # Altrimenti mostriamo i valori numerici
-                        target_text += f"Passo {min_pace}-{max_pace} min/km"
+                        # Se è un passo singolo (min == max), mostra solo un valore
+                        if min_pace == max_pace:
+                            target_text += f"Passo {min_pace} min/km"
+                        else:
+                            target_text += f"Passo {min_pace}-{max_pace} min/km"
                     
                 elif from_value:  # Solo valore minimo
                     min_pace_secs = int(1000 / from_value)
                     min_pace = f"{min_pace_secs // 60}:{min_pace_secs % 60:02d}"
-                    target_text += f"Passo {min_pace} min/km"
+                    target_text += f"Passo > {min_pace} min/km"
                 elif to_value:  # Solo valore massimo
                     max_pace_secs = int(1000 / to_value)
                     max_pace = f"{max_pace_secs // 60}:{max_pace_secs % 60:02d}"
-                    target_text += f"Passo {max_pace} min/km"
+                    target_text += f"Passo < {max_pace} min/km"
                     
             elif step.target.target == "heart.rate.zone":
                 from_value = step.target.from_value
@@ -2476,29 +2559,48 @@ class WorkoutEditorFrame(ttk.Frame):
                     heart_rates = app_config.get('heart_rates', {})
                     zone_name = None
                     
-                    for name, hr_range in heart_rates.items():
-                        if name.endswith('_HR'):
-                            # Calcola valori effettivi usando max_hr
-                            max_hr = heart_rates.get('max_hr', 180)
-                            
+                    # Prima controlla se c'è un nome di zona salvato
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        # Verifica che corrisponda ancora
+                        max_hr = heart_rates.get('max_hr', 180)
+                        zone_hr_key = f"{step.target.target_zone_name}_HR"
+                        
+                        if zone_hr_key in heart_rates:
+                            hr_range = heart_rates[zone_hr_key]
                             if '-' in hr_range and 'max_hr' in hr_range:
-                                # Formato: 62-76% max_hr
                                 parts = hr_range.split('-')
                                 min_percent = float(parts[0])
                                 max_percent = float(parts[1].split('%')[0])
                                 hr_min = int(min_percent * max_hr / 100)
                                 hr_max = int(max_percent * max_hr / 100)
                                 
-                                # Controllo con tolleranza
                                 if (abs(hr_min - from_value) <= 3 and 
                                     abs(hr_max - to_value) <= 3):
-                                    zone_name = name.replace('_HR', '')
-                                    break
+                                    zone_name = step.target.target_zone_name.replace('_HR', '')
+                    
+                    # Se non c'è zona salvata o non corrisponde, cerca
+                    if not zone_name:
+                        for name, hr_range in heart_rates.items():
+                            if name.endswith('_HR'):
+                                # Calcola valori effettivi usando max_hr
+                                max_hr = heart_rates.get('max_hr', 180)
+                                
+                                if '-' in hr_range and 'max_hr' in hr_range:
+                                    # Formato: 62-76% max_hr
+                                    parts = hr_range.split('-')
+                                    min_percent = float(parts[0])
+                                    max_percent = float(parts[1].split('%')[0])
+                                    hr_min = int(min_percent * max_hr / 100)
+                                    hr_max = int(max_percent * max_hr / 100)
+                                    
+                                    # Controllo con tolleranza
+                                    if (abs(hr_min - from_value) <= 3 and 
+                                        abs(hr_max - to_value) <= 3):
+                                        zone_name = name.replace('_HR', '')
+                                        break
                     
                     if zone_name:
-                        target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
+                        target_text += f"Zona FC {zone_name}"
                     else:
                         target_text += f"FC {from_value}-{to_value} bpm"
                 
@@ -2516,33 +2618,43 @@ class WorkoutEditorFrame(ttk.Frame):
                     power_values = app_config.get('sports.cycling.power_values', {})
                     zone_name = None
                     
-                    for name, power_range in power_values.items():
-                        if '-' in power_range:
-                            power_min, power_max = power_range.split('-')
-                            if (abs(int(power_min) - from_value) <= 2 and 
-                                abs(int(power_max) - to_value) <= 2):
-                                zone_name = name
-                                break
-                        elif power_range.startswith('<'):
-                            power_val = int(power_range[1:])
-                            if from_value == 0 and to_value == power_val:
-                                zone_name = name
-                                break
-                        elif power_range.endswith('+'):
-                            power_val = int(power_range[:-1])
-                            if from_value == power_val and to_value == 9999:
-                                zone_name = name
-                                break
-                        else:
-                            power_val = int(power_range)
-                            if from_value == power_val and to_value == power_val:
-                                zone_name = name
-                                break
+                    # Prima controlla se c'è un nome di zona salvato
+                    if hasattr(step.target, 'target_zone_name') and step.target.target_zone_name:
+                        if step.target.target_zone_name in power_values:
+                            power_range = power_values[step.target.target_zone_name]
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if (abs(int(power_min) - from_value) <= 2 and 
+                                    abs(int(power_max) - to_value) <= 2):
+                                    zone_name = step.target.target_zone_name
+                    
+                    # Se non c'è zona salvata o non corrisponde, cerca
+                    if not zone_name:
+                        for name, power_range in power_values.items():
+                            if '-' in power_range:
+                                power_min, power_max = power_range.split('-')
+                                if (abs(int(power_min) - from_value) <= 2 and 
+                                    abs(int(power_max) - to_value) <= 2):
+                                    zone_name = name
+                                    break
+                            elif power_range.startswith('<'):
+                                power_val = int(power_range[1:])
+                                if from_value == 0 and to_value == power_val:
+                                    zone_name = name
+                                    break
+                            elif power_range.endswith('+'):
+                                power_val = int(power_range[:-1])
+                                if from_value == power_val and to_value == 9999:
+                                    zone_name = name
+                                    break
+                            else:
+                                power_val = int(power_range)
+                                if from_value == power_val and to_value == power_val:
+                                    zone_name = name
+                                    break
                     
                     if zone_name:
-                        target_text += f"Zona {zone_name}"
-                        # Aggiorniamo anche l'oggetto target per usi futuri
-                        step.target.target_zone_name = zone_name
+                        target_text += f"Zona Potenza {zone_name}"
                     else:
                         target_text += f"Potenza {from_value}-{to_value} W"
                 
@@ -2557,15 +2669,16 @@ class WorkoutEditorFrame(ttk.Frame):
         if step.description:
             ttk.Label(details_frame, text=f"  •  {step.description}").pack(side=tk.LEFT)
         
-        # Associa eventi - nota che passiamo il percorso completo
-        content_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
-        header_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
-        details_frame.bind("<Button-1>", lambda e, p=path: self.on_nested_step_selected(p))
+        # Associa eventi
+        content_frame.bind("<Button-1>", lambda e: self.on_child_step_selected(path, index))
+        header_frame.bind("<Button-1>", lambda e: self.on_child_step_selected(path, index))
+        details_frame.bind("<Button-1>", lambda e: self.on_child_step_selected(path, index))
         
         # Doppio click per modificare
         content_frame.bind("<Double-1>", lambda e: self.edit_step())
         header_frame.bind("<Double-1>", lambda e: self.edit_step())
         details_frame.bind("<Double-1>", lambda e: self.edit_step())
+
 
     def add_step(self):
         """Aggiunge un nuovo step all'allenamento corrente."""

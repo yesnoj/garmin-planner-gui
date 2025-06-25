@@ -79,6 +79,12 @@ class WorkoutStepDialog(tk.Toplevel):
         self.target_max_var = tk.StringVar()
         self.target_zone_var = tk.StringVar()
         
+        # NUOVA: Variabile per passo singolo
+        self.single_pace_var = tk.BooleanVar(value=False)
+        
+        # Flag per evitare loop di aggiornamenti
+        self.updating_values = False
+        
         # Imposta i valori target
         if self.target.from_value is not None:
             if self.target.target == "pace.zone":
@@ -97,6 +103,11 @@ class WorkoutStepDialog(tk.Toplevel):
                 self.target_max_var.set(to_pace)
             else:
                 self.target_max_var.set(str(self.target.to_value))
+        
+        # NUOVO: Controlla se è un passo singolo (valori uguali)
+        if (self.target.from_value is not None and self.target.to_value is not None and
+            self.target.from_value == self.target.to_value and self.target.target == "pace.zone"):
+            self.single_pace_var.set(True)
         
         if self.target.zone is not None:
             self.target_zone_var.set(str(self.target.zone))
@@ -129,8 +140,63 @@ class WorkoutStepDialog(tk.Toplevel):
         # Carica le zone predefinite e imposta la zona corretta
         # Nota: mettiamo un breve ritardo per assicurarci che tutti i widget siano pronti
         self.after(100, self.initialize_zones)
+        
+        # Aggiungi listener per modifiche manuali ai valori
+        self.target_min_var.trace('w', self.on_target_value_changed)
+        self.target_max_var.trace('w', self.on_target_value_changed)
     
-
+    def on_target_value_changed(self, *args):
+        """Gestisce le modifiche manuali ai valori target."""
+        if self.updating_values:
+            return
+            
+        # Se l'utente sta modificando manualmente i valori, verifica se corrispondono ancora a una zona
+        self.check_zone_match()
+    
+    def check_zone_match(self):
+        """Verifica se i valori attuali corrispondono a una zona predefinita."""
+        if self.updating_values:
+            return
+            
+        target_type = self.target_type_var.get()
+        if target_type != "pace.zone":
+            return
+            
+        min_value = self.target_min_var.get()
+        max_value = self.target_max_var.get()
+        
+        if not min_value or not max_value:
+            return
+        
+        # Ottieni le zone di passo
+        paces = self.config.get(f'sports.{self.sport_type}.paces', {})
+        
+        # Verifica se corrisponde a una zona esistente
+        found_zone = None
+        for zone_name, pace_range in paces.items():
+            if '-' in pace_range:
+                zone_min, zone_max = pace_range.split('-')
+                zone_min = zone_min.strip()
+                zone_max = zone_max.strip()
+                
+                if zone_min == min_value and zone_max == max_value:
+                    found_zone = zone_name
+                    break
+            else:
+                # Zona a valore singolo
+                if pace_range.strip() == min_value and min_value == max_value:
+                    found_zone = zone_name
+                    break
+        
+        # Aggiorna la selezione della zona
+        self.updating_values = True
+        if found_zone:
+            self.predefined_zone_var.set(found_zone)
+        else:
+            # Nessuna zona corrisponde, rimuovi la selezione
+            self.predefined_zone_var.set("")
+        self.updating_values = False
+    
     def create_widgets(self):
         """Crea i widget del dialog."""
         # Frame principale con padding
@@ -178,6 +244,7 @@ class WorkoutStepDialog(tk.Toplevel):
         description_entry = ttk.Entry(description_frame, textvariable=self.description_var, 
                                    width=50)
         description_entry.pack(fill=tk.X, padx=10, pady=10)
+        create_tooltip(description_entry, "Inserisci una descrizione opzionale per questo step")
         
         # Frame per la condizione di fine
         end_condition_frame = ttk.LabelFrame(main_frame, text="Condizione di fine")
@@ -190,7 +257,7 @@ class WorkoutStepDialog(tk.Toplevel):
             ("Distanza", "distance"),
         ]
         
-        # Crea i radiobutton per le condizioni di fine
+        # Frame per i radiobutton
         end_condition_grid = ttk.Frame(end_condition_frame)
         end_condition_grid.pack(fill=tk.X, padx=10, pady=(10, 5))
         
@@ -200,22 +267,23 @@ class WorkoutStepDialog(tk.Toplevel):
                                command=self.on_end_condition_change)
             rb.grid(row=0, column=i, sticky=tk.W, padx=5)
         
-        # Frame per il valore della condizione di fine
-        self.end_value_frame = ttk.Frame(end_condition_frame)
-        self.end_value_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-
-        input_frame = ttk.Frame(self.end_value_frame)
-        input_frame.pack(fill=tk.X)
-
-        ttk.Label(input_frame, text="Valore:").pack(side=tk.LEFT, padx=(0, 5))
-        self.end_value_entry = ttk.Entry(input_frame, textvariable=self.end_condition_value_var, width=15)
+        # Frame per il valore della condizione
+        self.end_condition_value_frame = ttk.Frame(end_condition_frame)
+        self.end_condition_value_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        ttk.Label(self.end_condition_value_frame, text="Valore:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.end_value_entry = ttk.Entry(self.end_condition_value_frame, 
+                                       textvariable=self.end_condition_value_var, 
+                                       width=15)
         self.end_value_entry.pack(side=tk.LEFT)
-        self.end_value_label = ttk.Label(input_frame, text="")
-        self.end_value_label.pack(side=tk.LEFT, padx=(5, 0)) 
-
+        
+        self.end_value_label = ttk.Label(self.end_condition_value_frame, text="")
+        self.end_value_label.pack(side=tk.LEFT, padx=(5, 0))
+        
         # Frame per il target
         target_frame = ttk.LabelFrame(main_frame, text="Target")
-        target_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        target_frame.pack(fill=tk.X, pady=(0, 10))
         
         # Tipi di target
         target_types = [
@@ -253,6 +321,12 @@ class WorkoutStepDialog(tk.Toplevel):
                                      width=20, state="readonly")
         self.zone_combo.pack(side=tk.LEFT)
         
+        # Nota per valori personalizzati
+        self.custom_note = ttk.Label(self.predefined_zone_frame, 
+                                   text="(lascia vuoto per passo personalizzato)", 
+                                   font=('TkDefaultFont', 9, 'italic'))
+        self.custom_note.pack(side=tk.LEFT, padx=(10, 0))
+        
         # Associa evento di selezione della zona
         self.zone_combo.bind("<<ComboboxSelected>>", self.on_predefined_zone_selected)
         
@@ -260,25 +334,36 @@ class WorkoutStepDialog(tk.Toplevel):
         self.target_minmax_frame = ttk.Frame(self.target_value_frame)
         self.target_minmax_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Label(self.target_minmax_frame, text="Min:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        # NUOVO: Checkbox per passo singolo (solo per zone di passo)
+        self.single_pace_check = ttk.Checkbutton(
+            self.target_minmax_frame,
+            text="Usa passo singolo",
+            variable=self.single_pace_var,
+            command=self.on_single_pace_changed
+        )
+        self.single_pace_check.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
+        
+        self.min_label = ttk.Label(self.target_minmax_frame, text="Min:")
+        self.min_label.grid(row=1, column=0, sticky=tk.W, padx=(0, 5))
         
         self.target_min_entry = ttk.Entry(self.target_minmax_frame, 
                                        textvariable=self.target_min_var, 
                                        width=10)
-        self.target_min_entry.grid(row=0, column=1, sticky=tk.W)
+        self.target_min_entry.grid(row=1, column=1, sticky=tk.W)
         
         self.target_min_label = ttk.Label(self.target_minmax_frame, text="")
-        self.target_min_label.grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
+        self.target_min_label.grid(row=1, column=2, sticky=tk.W, padx=(5, 0))
         
-        ttk.Label(self.target_minmax_frame, text="Max:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5))
+        self.max_label = ttk.Label(self.target_minmax_frame, text="Max:")
+        self.max_label.grid(row=2, column=0, sticky=tk.W, padx=(0, 5))
         
         self.target_max_entry = ttk.Entry(self.target_minmax_frame, 
                                        textvariable=self.target_max_var, 
                                        width=10)
-        self.target_max_entry.grid(row=1, column=1, sticky=tk.W)
+        self.target_max_entry.grid(row=2, column=1, sticky=tk.W)
         
         self.target_max_label = ttk.Label(self.target_minmax_frame, text="")
-        self.target_max_label.grid(row=1, column=2, sticky=tk.W, padx=(5, 0))
+        self.target_max_label.grid(row=2, column=2, sticky=tk.W, padx=(5, 0))
         
         # Pulsanti
         buttons_frame = ttk.Frame(main_frame)
@@ -286,6 +371,34 @@ class WorkoutStepDialog(tk.Toplevel):
         
         ttk.Button(buttons_frame, text="OK", command=self.on_ok).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(buttons_frame, text="Annulla", command=self.on_cancel).pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # NUOVO: Aggiorna lo stato iniziale del checkbox passo singolo
+        self.on_single_pace_changed()
+    
+    def on_single_pace_changed(self):
+        """Gestisce il cambio del checkbox passo singolo."""
+        if self.single_pace_var.get():
+            # Se è selezionato passo singolo, copia il valore min nel max e disabilita il campo max
+            if self.target_min_var.get():
+                self.target_max_var.set(self.target_min_var.get())
+            self.target_max_entry.config(state="disabled")
+            
+            # Cambia l'etichetta di Min in "Passo:"
+            self.min_label.config(text="Passo:")
+            # Nascondi la riga del Max
+            self.max_label.grid_remove()
+            self.target_max_entry.grid_remove()
+            self.target_max_label.grid_remove()
+        else:
+            # Se non è selezionato, abilita il campo max
+            self.target_max_entry.config(state="normal")
+            
+            # Ripristina l'etichetta di Min
+            self.min_label.config(text="Min:")
+            # Mostra la riga del Max
+            self.max_label.grid()
+            self.target_max_entry.grid()
+            self.target_max_label.grid()
     
     def initialize_zones(self):
         """Inizializza le zone e imposta la zona corretta."""
@@ -294,9 +407,16 @@ class WorkoutStepDialog(tk.Toplevel):
         
         # Verifichiamo di nuovo che la zona sia impostata correttamente
         if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
-            self.predefined_zone_var.set(self.target.target_zone_name)
-            # Aggiorniamo i valori min/max in base alla zona
-            self.on_predefined_zone_selected()
+            # Verifica se la zona salvata corrisponde ancora ai valori attuali
+            self.check_zone_match()
+            
+            # Se dopo il check c'è ancora una zona, selezionala
+            if self.predefined_zone_var.get():
+                # La zona è valida
+                pass
+            else:
+                # La zona non corrisponde più ai valori, non selezionare nulla
+                self.predefined_zone_var.set("")
     
     def load_predefined_zones(self):
         """Carica le zone predefinite dalla configurazione."""
@@ -333,276 +453,114 @@ class WorkoutStepDialog(tk.Toplevel):
         # Aggiorna la combo
         if zones:
             zone_names = [name for name, _ in zones]
-            self.zone_combo['values'] = zone_names
+            # Aggiungi opzione vuota all'inizio per passo personalizzato
+            zone_names_with_empty = [""] + zone_names
+            self.zone_combo['values'] = zone_names_with_empty
             
-            # Verifica se lo step ha già una zona assegnata
-            if hasattr(self.target, 'target_zone_name') and self.target.target_zone_name:
-                # Cerca la zona nella lista
-                if self.target.target_zone_name in zone_names:
-                    self.predefined_zone_var.set(self.target.target_zone_name)
-                else:
-                    # Se la zona non è nella lista, imposta la prima
-                    if zone_names:
-                        self.predefined_zone_var.set(zone_names[0])
-            else:
-                # Se non c'è una zona assegnata, cerchiamo di trovare la zona corrispondente
-                # ai valori min/max
-                found_zone = False
-                if target_type == "pace.zone":
-                    # Ottieni i valori correnti
-                    min_pace = self.target_min_var.get()
-                    max_pace = self.target_max_var.get()
-                    
-                    if min_pace and max_pace:
-                        # Cerca la zona corrispondente
-                        for name, pace_range in paces.items():
-                            if '-' in pace_range:
-                                pace_min, pace_max = pace_range.split('-')
-                                pace_min = pace_min.strip()
-                                pace_max = pace_max.strip()
-                                
-                                if pace_min == min_pace and pace_max == max_pace:
-                                    self.predefined_zone_var.set(name)
-                                    found_zone = True
-                                    break
-                            elif pace_range.strip() == min_pace and pace_range.strip() == max_pace:
-                                self.predefined_zone_var.set(name)
-                                found_zone = True
-                                break
-                
-                elif target_type == "heart.rate.zone":
-                    # Ottieni i valori correnti
-                    min_hr = self.target_min_var.get()
-                    max_hr = self.target_max_var.get()
-                    
-                    if min_hr and max_hr:
-                        try:
-                            min_hr_val = int(min_hr)
-                            max_hr_val = int(max_hr)
-                            
-                            # Cerca la zona corrispondente
-                            max_hr_config = heart_rates.get('max_hr', 180)
-                            
-                            for name, hr_range in heart_rates.items():
-                                if name.endswith('_HR'):
-                                    if '-' in hr_range and 'max_hr' in hr_range:
-                                        # Formato: N-N% max_hr
-                                        parts = hr_range.split('-')
-                                        min_percent = float(parts[0])
-                                        max_percent = float(parts[1].split('%')[0])
-                                        
-                                        calculated_min = int(min_percent * max_hr_config / 100)
-                                        calculated_max = int(max_percent * max_hr_config / 100)
-                                        
-                                        # Verifica se i valori calcolati sono simili a quelli attuali
-                                        # con un margine di tolleranza
-                                        if (abs(calculated_min - min_hr_val) <= 2 and 
-                                            abs(calculated_max - max_hr_val) <= 2):
-                                            self.predefined_zone_var.set(name)
-                                            found_zone = True
-                                            break
-                        except (ValueError, TypeError):
-                            pass
-                
-                elif target_type == "power.zone":
-                    # Ottieni i valori correnti
-                    min_power = self.target_min_var.get()
-                    max_power = self.target_max_var.get()
-                    
-                    if min_power and max_power:
-                        try:
-                            min_power_val = int(min_power)
-                            max_power_val = int(max_power)
-                            
-                            # Cerca la zona corrispondente
-                            for name, power_range in power_values.items():
-                                if '-' in power_range:
-                                    power_min, power_max = power_range.split('-')
-                                    if int(power_min) == min_power_val and int(power_max) == max_power_val:
-                                        self.predefined_zone_var.set(name)
-                                        found_zone = True
-                                        break
-                                elif power_range.startswith('<'):
-                                    power_val = int(power_range[1:])
-                                    if min_power_val == 0 and max_power_val == power_val:
-                                        self.predefined_zone_var.set(name)
-                                        found_zone = True
-                                        break
-                                elif power_range.endswith('+'):
-                                    power_val = int(power_range[:-1])
-                                    if min_power_val == power_val and max_power_val == 9999:
-                                        self.predefined_zone_var.set(name)
-                                        found_zone = True
-                                        break
-                                else:
-                                    power_val = int(power_range)
-                                    if min_power_val == power_val and max_power_val == power_val:
-                                        self.predefined_zone_var.set(name)
-                                        found_zone = True
-                                        break
-                        except (ValueError, TypeError):
-                            pass
-                
-                # Se non abbiamo trovato una zona corrispondente, imposta la prima
-                if not found_zone and zone_names:
-                    self.predefined_zone_var.set(zone_names[0])
-                    
-                    # Aggiorna i valori min/max in base alla zona selezionata
-                    self.on_predefined_zone_selected()
-                
+            # Verifica i valori attuali e seleziona la zona corrispondente
+            self.check_zone_match()
+
     def on_predefined_zone_selected(self, event=None):
-        """Handles selection of a predefined zone."""
+        """Gestisce la selezione di una zona predefinita."""
         zone_name = self.predefined_zone_var.get()
         
+        # Se è stata selezionata l'opzione vuota, non fare nulla
         if not zone_name:
             return
-                
+        
         target_type = self.target_type_var.get()
         
-        # Get the values of the selected zone
+        # Imposta il flag per evitare trigger del check_zone_match
+        self.updating_values = True
+        
         if target_type == "pace.zone":
-            # Get the pace zone
-            pace_range = self.config.get(f'sports.{self.sport_type}.paces.{zone_name}', '')
-            
-            if '-' in pace_range:
-                # Format mm:ss-mm:ss
-                min_pace, max_pace = pace_range.split('-')
-            else:
-                # Single value format mm:ss - APPLY MARGINS
-                min_pace = max_pace = pace_range
+            # Ottieni i valori della zona di passo
+            paces = self.config.get(f'sports.{self.sport_type}.paces', {})
+            if zone_name in paces:
+                pace_range = paces[zone_name]
+                if '-' in pace_range:
+                    min_pace, max_pace = pace_range.split('-')
+                    self.target_min_var.set(min_pace.strip())
+                    self.target_max_var.set(max_pace.strip())
+                    self.single_pace_var.set(False)
+                else:
+                    # Se è un valore singolo, usa lo stesso per min e max
+                    self.target_min_var.set(pace_range.strip())
+                    self.target_max_var.set(pace_range.strip())
+                    self.single_pace_var.set(True)
                 
-                # Apply margins for single value
-                faster_margin = self.config.get(f'sports.{self.sport_type}.margins.faster', '0:05')
-                slower_margin = self.config.get(f'sports.{self.sport_type}.margins.slower', '0:05')
+                self.on_single_pace_changed()
                 
-                # Calculate new min and max with margins
-                min_pace_secs = pace_to_seconds(min_pace)
-                faster_secs = pace_to_seconds(faster_margin)
-                slower_secs = pace_to_seconds(slower_margin)
-                
-                min_pace_with_margin = min_pace_secs - faster_secs  # Faster = lower time value
-                max_pace_with_margin = min_pace_secs + slower_secs  # Slower = higher time value
-                
-                # Convert back to mm:ss format
-                min_pace = seconds_to_pace(min_pace_with_margin)
-                max_pace = seconds_to_pace(max_pace_with_margin)
-            
-            self.target_min_var.set(min_pace)
-            self.target_max_var.set(max_pace)
-            
-            # MODIFICATO: Salva il nome della zona
-            if hasattr(self, 'target') and self.target:
-                self.target.target_zone_name = zone_name
-                    
         elif target_type == "heart.rate.zone":
-            # Get the heart rate zone
-            hr_range = self.config.get(f'heart_rates.{zone_name}', '')
+            # Ottieni i valori HR dalla configurazione
+            heart_rates = self.config.get('heart_rates', {})
+            max_hr = heart_rates.get('max_hr', 180)
             
-            # Extract numeric values (can be in format NN-NN% max_hr)
-            if '-' in hr_range:
-                # Format N-N or N-N% max_hr
-                if 'max_hr' in hr_range:
-                    # Format N-N% max_hr
-                    parts = hr_range.split('-')
-                    min_hr = parts[0].strip()
-                    max_hr = parts[1].split('%')[0].strip()
-                    
-                    # Convert to absolute values using max_hr
-                    max_hr_value = self.config.get('heart_rates.max_hr', 180)
-                    min_hr_value = int(float(min_hr) * max_hr_value / 100)
-                    max_hr_value = int(float(max_hr) * max_hr_value / 100)
-                else:
-                    # Format N-N
-                    min_hr, max_hr = hr_range.split('-')
-                    min_hr_value = int(min_hr)
-                    max_hr_value = int(max_hr)
-            else:
-                # Single value format N or N% max_hr - APPLY MARGINS
-                if 'max_hr' in hr_range:
-                    # Format N% max_hr
-                    hr = hr_range.split('%')[0].strip()
-                    max_hr_value = self.config.get('heart_rates.max_hr', 180)
-                    hr_value = int(float(hr) * max_hr_value / 100)
-                else:
-                    # Format N
-                    hr_value = int(hr_range)
+            if zone_name in heart_rates:
+                hr_range = heart_rates[zone_name]
                 
-                # Apply margins for single value
-                hr_up_margin = self.config.get('hr_margins.hr_up', 5)
-                hr_down_margin = self.config.get('hr_margins.hr_down', 5)
+                if '-' in hr_range and 'max_hr' in hr_range:
+                    # Formato: 62-76% max_hr
+                    parts = hr_range.split('-')
+                    min_percent = float(parts[0])
+                    max_percent = float(parts[1].split('%')[0])
                     
-                min_hr_value = hr_value - hr_down_margin
-                max_hr_value = hr_value + hr_up_margin
-            
-            self.target_min_var.set(str(min_hr_value))
-            self.target_max_var.set(str(max_hr_value))
-            
-            # MODIFICATO: Salva il nome della zona
-            if hasattr(self, 'target') and self.target:
-                self.target.target_zone_name = zone_name
+                    # Converti in valori assoluti
+                    min_hr = int(min_percent * max_hr / 100)
+                    max_hr = int(max_percent * max_hr / 100)
+                    
+                    self.target_min_var.set(str(min_hr))
+                    self.target_max_var.set(str(max_hr))
                     
         elif target_type == "power.zone" and self.sport_type == "cycling":
-            # Get the power zone
-            power_range = self.config.get(f'sports.cycling.power_values.{zone_name}', '')
+            # Ottieni i valori di potenza
+            power_values = self.config.get('sports.cycling.power_values', {})
             
-            if '-' in power_range:
-                # Format N-N
-                min_power, max_power = power_range.split('-')
-                min_power_value = int(min_power)
-                max_power_value = int(max_power)
-            elif power_range.startswith('<'):
-                # Format <N
-                power = power_range[1:]
-                min_power_value = 0
-                max_power_value = int(power)
-            elif power_range.endswith('+'):
-                # Format N+
-                power = power_range[:-1]
-                min_power_value = int(power)
-                max_power_value = 9999
-            else:
-                # Single value format N - APPLY MARGINS
-                power_value = int(power_range)
+            if zone_name in power_values:
+                power_range = power_values[zone_name]
                 
-                # Apply margins for single value
-                power_up_margin = self.config.get('sports.cycling.margins.power_up', 10)
-                power_down_margin = self.config.get('sports.cycling.margins.power_down', 10)
-                
-                min_power_value = power_value - power_down_margin
-                max_power_value = power_value + power_up_margin
-            
-            self.target_min_var.set(str(min_power_value))
-            self.target_max_var.set(str(max_power_value))
-            
-            # MODIFICATO: Salva il nome della zona
-            if hasattr(self, 'target') and self.target:
-                self.target.target_zone_name = zone_name
+                if '-' in power_range:
+                    # Range di potenza
+                    min_power, max_power = power_range.split('-')
+                    self.target_min_var.set(min_power.strip())
+                    self.target_max_var.set(max_power.strip())
+                elif power_range.startswith('<'):
+                    # Sotto una certa potenza
+                    max_power = power_range[1:].strip()
+                    self.target_min_var.set("0")
+                    self.target_max_var.set(max_power)
+                elif power_range.endswith('+'):
+                    # Sopra una certa potenza
+                    min_power = power_range[:-1].strip()
+                    self.target_min_var.set(min_power)
+                    self.target_max_var.set("9999")
+                else:
+                    # Valore singolo
+                    self.target_min_var.set(power_range.strip())
+                    self.target_max_var.set(power_range.strip())
+        
+        # Rimuovi il flag
+        self.updating_values = False
     
     def on_step_type_change(self):
         """Gestisce il cambio di tipo di step."""
-        step_type = self.step_type_var.get()
-        
-        # Se è un repeat, cambia la condizione di fine
-        if step_type == "repeat":
-            self.end_condition_var.set("iterations")
-            self.target_type_var.set("no.target")
-            self.on_end_condition_change()
-            self.on_target_type_change()
+        # Per ora non fa nulla, ma può essere esteso in futuro
+        pass
     
     def on_end_condition_change(self):
         """Gestisce il cambio di condizione di fine."""
         end_condition = self.end_condition_var.get()
         
-        # Mostra/nascondi il frame del valore
         if end_condition == "lap.button":
-            self.end_value_entry.config(state="disabled")
-            self.end_value_label.config(text="")
+            # Nascondi il frame del valore
+            self.end_condition_value_frame.pack_forget()
         else:
-            self.end_value_entry.config(state="normal")
+            # Mostra il frame del valore
+            self.end_condition_value_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
             
             # Aggiorna l'etichetta
             if end_condition == "time":
-                self.end_value_label.config(text="(formato mm:ss)")
+                self.end_value_label.config(text="(mm:ss)")
                 create_tooltip(self.end_value_entry, "Inserisci il tempo nel formato mm:ss (es. 5:30)")
             elif end_condition == "distance":
                 self.end_value_label.config(text="(es. 1000m o 5km)")
@@ -618,6 +576,14 @@ class WorkoutStepDialog(tk.Toplevel):
         # Nascondi tutti i frame
         self.predefined_zone_frame.pack_forget()
         self.target_minmax_frame.pack_forget()
+        
+        # Mostra/nascondi il checkbox passo singolo
+        if target_type == "pace.zone":
+            self.single_pace_check.grid()
+        else:
+            self.single_pace_check.grid_remove()
+            self.single_pace_var.set(False)
+            self.on_single_pace_changed()
         
         # Mostra il frame appropriato
         if target_type == "no.target":
@@ -654,37 +620,49 @@ class WorkoutStepDialog(tk.Toplevel):
         Returns:
             True se i dati sono validi, False altrimenti
         """
-        # Valida la condizione di fine
+        # Verifica la condizione di fine
         end_condition = self.end_condition_var.get()
         
         if end_condition != "lap.button":
-            end_value = self.end_condition_value_var.get()
+            value = self.end_condition_value_var.get()
             
-            if not end_value:
+            if not value:
                 show_error("Errore", "Inserisci un valore per la condizione di fine", parent=self)
                 return False
             
             if end_condition == "time":
-                # Verifica che sia nel formato mm:ss
-                if not validate_pace(end_value):
+                # Verifica formato mm:ss
+                if ':' not in value:
                     show_error("Errore", "Il tempo deve essere nel formato mm:ss (es. 5:30)", parent=self)
                     return False
-            
-            elif end_condition == "distance":
-                # Verifica che sia nel formato Nm o Nkm
-                if not re.match(r'^\d+(\.\d+)?(m|km)$', end_value):
-                    show_error("Errore", "La distanza deve essere nel formato Nm o Nkm (es. 1000m o 5km)", parent=self)
+                
+                try:
+                    minutes, seconds = map(int, value.split(':'))
+                    if seconds >= 60:
+                        show_error("Errore", "I secondi devono essere inferiori a 60", parent=self)
+                        return False
+                except ValueError:
+                    show_error("Errore", "Il tempo deve essere nel formato mm:ss (es. 5:30)", parent=self)
                     return False
-            
+                    
+            elif end_condition == "distance":
+                # Verifica formato distanza (numero seguito da m o km)
+                pattern = r'^(\d+(?:\.\d+)?)\s*(m|km)$'
+                match = re.match(pattern, value.lower())
+                
+                if not match:
+                    show_error("Errore", "La distanza deve essere nel formato '1000m' o '5km'", parent=self)
+                    return False
+                    
             elif end_condition == "iterations":
                 # Verifica che sia un numero intero
                 try:
-                    int(end_value)
+                    int(value)
                 except ValueError:
-                    show_error("Errore", "Il numero di ripetizioni deve essere un intero", parent=self)
+                    show_error("Errore", "Le ripetizioni devono essere un numero intero", parent=self)
                     return False
         
-        # Valida il target
+        # Verifica il target
         target_type = self.target_type_var.get()
         
         if target_type != "no.target":
@@ -692,39 +670,51 @@ class WorkoutStepDialog(tk.Toplevel):
                 min_value = self.target_min_var.get()
                 max_value = self.target_max_var.get()
                 
-                if not min_value or not max_value:
-                    show_error("Errore", "Inserisci i valori minimo e massimo per il target", parent=self)
-                    return False
-                
-                if target_type == "pace.zone":
-                    # Verifica che siano nel formato mm:ss
+                # MODIFICATO: Se è passo singolo, usa solo min_value
+                if self.single_pace_var.get() and target_type == "pace.zone":
+                    if not min_value:
+                        show_error("Errore", "Inserisci il valore del passo", parent=self)
+                        return False
+                    
                     if not validate_pace(min_value):
-                        show_error("Errore", "Il passo minimo deve essere nel formato mm:ss (es. 4:30)", parent=self)
+                        show_error("Errore", "Il passo deve essere nel formato mm:ss (es. 6:30)", parent=self)
+                        return False
+                else:
+                    # Validazione normale per range
+                    if not min_value or not max_value:
+                        show_error("Errore", "Inserisci entrambi i valori minimo e massimo", parent=self)
                         return False
                     
-                    if not validate_pace(max_value):
-                        show_error("Errore", "Il passo massimo deve essere nel formato mm:ss (es. 5:00)", parent=self)
-                        return False
-                
-                elif target_type == "heart.rate.zone":
-                    # Verifica che siano numeri interi
-                    if not validate_hr(min_value):
-                        show_error("Errore", "La frequenza cardiaca minima deve essere un numero intero", parent=self)
-                        return False
+                    # Verifica il formato in base al tipo
+                    if target_type == "pace.zone":
+                        # Verifica che siano nel formato mm:ss
+                        if not validate_pace(min_value):
+                            show_error("Errore", "Il passo minimo deve essere nel formato mm:ss (es. 4:30)", parent=self)
+                            return False
+                        
+                        if not validate_pace(max_value):
+                            show_error("Errore", "Il passo massimo deve essere nel formato mm:ss (es. 5:00)", parent=self)
+                            return False
                     
-                    if not validate_hr(max_value):
-                        show_error("Errore", "La frequenza cardiaca massima deve essere un numero intero", parent=self)
-                        return False
-                
-                elif target_type == "power.zone":
-                    # Verifica che siano numeri interi
-                    if not validate_power(min_value):
-                        show_error("Errore", "La potenza minima deve essere un numero intero", parent=self)
-                        return False
+                    elif target_type == "heart.rate.zone":
+                        # Verifica che siano numeri interi
+                        if not validate_hr(min_value):
+                            show_error("Errore", "La frequenza cardiaca minima deve essere un numero intero", parent=self)
+                            return False
+                        
+                        if not validate_hr(max_value):
+                            show_error("Errore", "La frequenza cardiaca massima deve essere un numero intero", parent=self)
+                            return False
                     
-                    if not validate_power(max_value):
-                        show_error("Errore", "La potenza massima deve essere un numero intero", parent=self)
-                        return False
+                    elif target_type == "power.zone":
+                        # Verifica che siano numeri interi
+                        if not validate_power(min_value):
+                            show_error("Errore", "La potenza minima deve essere un numero intero", parent=self)
+                            return False
+                        
+                        if not validate_power(max_value):
+                            show_error("Errore", "La potenza massima deve essere un numero intero", parent=self)
+                            return False
         
         return True
     
@@ -756,7 +746,12 @@ class WorkoutStepDialog(tk.Toplevel):
         if target_type != "no.target":
             if target_type in ["pace.zone", "heart.rate.zone", "power.zone"]:
                 min_value = self.target_min_var.get()
-                max_value = self.target_max_var.get()
+                
+                # MODIFICATO: Gestione passo singolo
+                if self.single_pace_var.get() and target_type == "pace.zone":
+                    max_value = min_value  # Usa lo stesso valore per min e max
+                else:
+                    max_value = self.target_max_var.get()
                 
                 # Converti i valori
                 if target_type == "pace.zone":
@@ -778,10 +773,24 @@ class WorkoutStepDialog(tk.Toplevel):
                 
                 target = Target(target_type, to_value, from_value)
                 
-                # MODIFICATO: Imposta il nome della zona se è stata selezionata una zona predefinita
+                # IMPORTANTE: Imposta il nome della zona SOLO se è stata selezionata una zona predefinita
+                # e i valori corrispondono ancora
                 zone_name = self.predefined_zone_var.get()
                 if zone_name:
-                    target.target_zone_name = zone_name
+                    # Verifica che i valori corrispondano ancora alla zona selezionata
+                    if target_type == "pace.zone":
+                        paces = self.config.get(f'sports.{self.sport_type}.paces', {})
+                        if zone_name in paces:
+                            pace_range = paces[zone_name]
+                            if '-' in pace_range:
+                                zone_min, zone_max = pace_range.split('-')
+                                if zone_min.strip() == min_value and zone_max.strip() == max_value:
+                                    target.target_zone_name = zone_name
+                            else:
+                                # Valore singolo
+                                if pace_range.strip() == min_value and min_value == max_value:
+                                    target.target_zone_name = zone_name
+                # Se non c'è zona selezionata o i valori non corrispondono, target_zone_name rimane None
                     
             elif target_type == "zone":
                 # Usa la zona predefinita
